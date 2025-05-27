@@ -27,8 +27,6 @@ Users are not expected to have an account and can join any lobby. Doing so will 
 | Endpoint | Method | Request | Response | Description |
 |----------|--------|---------|----------|-------------|
 | `/session/` | POST | None | `SessionResponse` | Create new session with auto-generated username |
-| `/session/` | GET | Header: `X-Session-ID` | `SessionResponse` | Get current session info |
-| `/session/` | DELETE | Header: `X-Session-ID` | `MessageResponse` | Delete session |
 
 ### Room Management  
 Creator of a room is also the host. If the host leaves the room then the next user is assigned as host. The host has the ability to "delete" the room.
