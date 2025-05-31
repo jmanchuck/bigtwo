@@ -7,7 +7,7 @@ pub struct RoomCreateRequest {
 }
 
 /// Response for room creation and room information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RoomResponse {
     pub id: String,
     pub host_name: String,

@@ -1,3 +1,4 @@
+mod room;
 mod session;
 mod shared;
 
@@ -5,6 +6,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use room::repository::InMemoryRoomRepository;
 use session::repository::InMemorySessionRepository;
 // use session::repository::PostgresSessionRepository; // For production
 use shared::AppState;
@@ -29,18 +31,20 @@ async fn main() {
     // Create shared application state with dependency injection
     // Easy to switch between implementations:
     let session_repository = Arc::new(InMemorySessionRepository::new());
+    let room_repository = Arc::new(InMemoryRoomRepository::new());
 
     // For production with PostgreSQL:
     // let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     // let pool = sqlx::PgPool::connect(&database_url).await.expect("Failed to connect to database");
     // let session_repository = Arc::new(PostgresSessionRepository::new(pool));
 
-    let app_state = AppState::new(session_repository);
+    let app_state = AppState::new(session_repository, room_repository);
 
     // build our application with a single route
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/session", post(session::create_session))
+        .route("/room", post(room::create_room))
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 

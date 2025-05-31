@@ -3,7 +3,7 @@ pub use handlers::create_room;
 
 // Internal modules
 mod handlers;
-mod models;
-mod repository;
+pub mod models;
+pub mod repository;
 mod service;
 mod types;

@@ -6,7 +6,7 @@ pub use types::{SessionClaims, SessionResponse};
 // Internal modules
 mod handlers;
 mod middleware;
-mod models;
+pub mod models;
 pub mod repository;
 mod service;
 mod token;

@@ -32,6 +32,7 @@ pub async fn create_session(
 mod tests {
     use super::*;
     use crate::session::repository::InMemorySessionRepository;
+    use crate::shared::test_utils::AppStateBuilder;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -41,9 +42,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_session_handler() {
-        // Create app state with in-memory repository for testing
+        // Create app state with real session repository, dummy room repository
         let session_repository = Arc::new(InMemorySessionRepository::new());
-        let app_state = AppState::new(session_repository);
+        let app_state = AppStateBuilder::new()
+            .with_session_repository(session_repository)
+            .build();
 
         // Create router with our handler
         let app = Router::new()
