@@ -44,6 +44,30 @@ impl RoomService {
             player_count: room_model.player_count,
         })
     }
+
+    /// Lists all available rooms
+    #[instrument(skip(self))]
+    pub async fn list_rooms(&self) -> Result<Vec<RoomResponse>, AppError> {
+        debug!("Listing all rooms");
+
+        // Get all rooms from repository
+        let rooms = self.repository.list_rooms().await?;
+
+        info!(room_count = rooms.len(), "Rooms retrieved successfully");
+
+        // Convert to response format
+        let room_responses = rooms
+            .into_iter()
+            .map(|room| RoomResponse {
+                id: room.id,
+                host_name: room.host_name,
+                status: room.status,
+                player_count: room.player_count,
+            })
+            .collect();
+
+        Ok(room_responses)
+    }
 }
 
 #[cfg(test)]
@@ -140,5 +164,75 @@ mod tests {
             let response = service.create_room(request).await.unwrap();
             assert_eq!(response.host_name, name);
         }
+    }
+
+    #[tokio::test]
+    async fn test_list_rooms_empty() {
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repo);
+
+        let rooms = service.list_rooms().await.unwrap();
+        assert!(rooms.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_rooms_single() {
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repo);
+
+        // Create a room first
+        let request = RoomCreateRequest {
+            host_name: "test-host".to_string(),
+        };
+        let created_room = service.create_room(request).await.unwrap();
+
+        // List rooms
+        let rooms = service.list_rooms().await.unwrap();
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0].id, created_room.id);
+        assert_eq!(rooms[0].host_name, "test-host");
+        assert_eq!(rooms[0].status, "ONLINE");
+        assert_eq!(rooms[0].player_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_rooms_multiple() {
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repo);
+
+        // Create multiple rooms
+        let request1 = RoomCreateRequest {
+            host_name: "host-1".to_string(),
+        };
+        let request2 = RoomCreateRequest {
+            host_name: "host-2".to_string(),
+        };
+        let request3 = RoomCreateRequest {
+            host_name: "host-3".to_string(),
+        };
+
+        let room1 = service.create_room(request1).await.unwrap();
+        let room2 = service.create_room(request2).await.unwrap();
+        let room3 = service.create_room(request3).await.unwrap();
+
+        // List all rooms
+        let rooms = service.list_rooms().await.unwrap();
+        assert_eq!(rooms.len(), 3);
+
+        // Verify all rooms are present (order may vary)
+        let room_ids: std::collections::HashSet<String> =
+            rooms.iter().map(|r| r.id.clone()).collect();
+        assert!(room_ids.contains(&room1.id));
+        assert!(room_ids.contains(&room2.id));
+        assert!(room_ids.contains(&room3.id));
+
+        // Verify host names are correct
+        let room_hosts: std::collections::HashMap<String, String> = rooms
+            .iter()
+            .map(|r| (r.id.clone(), r.host_name.clone()))
+            .collect();
+        assert_eq!(room_hosts.get(&room1.id), Some(&"host-1".to_string()));
+        assert_eq!(room_hosts.get(&room2.id), Some(&"host-2".to_string()));
+        assert_eq!(room_hosts.get(&room3.id), Some(&"host-3".to_string()));
     }
 }

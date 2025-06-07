@@ -45,6 +45,7 @@ async fn main() {
         .route("/", get(|| async { "Hello, World!" }))
         .route("/session", post(session::create_session))
         .route("/room", post(room::create_room))
+        .route("/rooms", get(room::list_rooms))
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 

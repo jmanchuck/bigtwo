@@ -11,6 +11,7 @@ use crate::shared::AppError;
 pub trait RoomRepository {
     async fn create_room(&self, room: &RoomModel) -> Result<(), AppError>;
     async fn get_room(&self, room_id: &str) -> Result<Option<RoomModel>, AppError>;
+    async fn list_rooms(&self) -> Result<Vec<RoomModel>, AppError>;
 }
 
 /// In-memory implementation of RoomRepository for development and testing
@@ -59,6 +60,17 @@ impl RoomRepository for InMemoryRoomRepository {
         }
 
         Ok(room)
+    }
+
+    #[instrument(skip(self))]
+    async fn list_rooms(&self) -> Result<Vec<RoomModel>, AppError> {
+        debug!("Listing all rooms in memory");
+
+        let rooms = self.rooms.lock().unwrap();
+        let room_list = rooms.values().cloned().collect();
+
+        debug!("Rooms listed successfully in memory");
+        Ok(room_list)
     }
 }
 
@@ -147,5 +159,59 @@ mod tests {
         let retrieved3 = repo.get_room(&room3.id).await.unwrap();
         assert!(retrieved3.is_some());
         assert_eq!(retrieved3.unwrap().host_name, "host-3");
+    }
+
+    #[tokio::test]
+    async fn test_list_rooms_empty() {
+        let repo = InMemoryRoomRepository::new();
+
+        let rooms = repo.list_rooms().await.unwrap();
+        assert!(rooms.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_rooms_single() {
+        let repo = InMemoryRoomRepository::new();
+        let room = create_test_room("test-room", "test-host");
+
+        repo.create_room(&room).await.unwrap();
+
+        let rooms = repo.list_rooms().await.unwrap();
+        assert_eq!(rooms.len(), 1);
+        assert_eq!(rooms[0].id, "test-room");
+        assert_eq!(rooms[0].host_name, "test-host");
+    }
+
+    #[tokio::test]
+    async fn test_list_rooms_multiple() {
+        let repo = InMemoryRoomRepository::new();
+        let room1 = create_test_room("room-1", "host-1");
+        let room2 = create_test_room("room-2", "host-2");
+        let room3 = create_test_room("room-3", "host-3");
+
+        // Create all rooms
+        repo.create_room(&room1).await.unwrap();
+        repo.create_room(&room2).await.unwrap();
+        repo.create_room(&room3).await.unwrap();
+
+        // List all rooms
+        let rooms = repo.list_rooms().await.unwrap();
+        assert_eq!(rooms.len(), 3);
+
+        // Verify all rooms are present (order may vary due to HashMap)
+        let room_ids: std::collections::HashSet<String> =
+            rooms.iter().map(|r| r.id.clone()).collect();
+        assert!(room_ids.contains("room-1"));
+        assert!(room_ids.contains("room-2"));
+        assert!(room_ids.contains("room-3"));
+
+        // Verify host names are correct
+        let room_hosts: std::collections::HashMap<String, String> = rooms
+            .iter()
+            .map(|r| (r.id.clone(), r.host_name.clone()))
+            .collect();
+        assert_eq!(room_hosts.get("room-1"), Some(&"host-1".to_string()));
+        assert_eq!(room_hosts.get("room-2"), Some(&"host-2".to_string()));
+        assert_eq!(room_hosts.get("room-3"), Some(&"host-3".to_string()));
     }
 }

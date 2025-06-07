@@ -111,6 +111,9 @@ pub mod test_utils {
         async fn get_room(&self, _room_id: &str) -> Result<Option<RoomModel>, AppError> {
             Ok(None)
         }
+        async fn list_rooms(&self) -> Result<Vec<RoomModel>, AppError> {
+            Ok(Vec::new())
+        }
     }
 
     /// Builder for creating AppState with overrides for testing
