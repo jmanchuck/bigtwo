@@ -9,9 +9,10 @@ use axum::{
 use room::repository::InMemoryRoomRepository;
 use session::repository::InMemorySessionRepository;
 // use session::repository::PostgresSessionRepository; // For production
+use axum::http::{HeaderValue, Method};
 use shared::AppState;
 use std::sync::Arc;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -40,12 +41,25 @@ async fn main() {
 
     let app_state = AppState::new(session_repository, room_repository);
 
+    // Configure CORS for development
+    let cors = CorsLayer::new()
+        .allow_origin([
+            "https://localhost:5173".parse::<HeaderValue>().unwrap(),
+            "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::DELETE])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderName::from_static("x-session-id"),
+        ]);
+
     // build our application with a single route
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/session", post(session::create_session))
         .route("/room", post(room::create_room))
         .route("/rooms", get(room::list_rooms))
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 
