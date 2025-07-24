@@ -81,12 +81,12 @@ All messages follow this JSON structure:
 #### Server → Client Messages
 | Type | Payload Fields | Description |
 |------|----------------|-------------|
-| `PLAYERS_LIST` | `players: string[]` | Current players in room |
-| `HOST_CHANGE` | `host: string` | New host assigned |
+| `PLAYERS_LIST` | `players: string[]` | Current players in room, sent to all users in the room when a new player joins |
+| `HOST_CHANGE` | `host: string` | New host assigned whenever the host leaves. Name of the new host |
 | `MOVE_PLAYED` | `player: string, cards: string[]` | Player played cards |
 | `TURN_CHANGE` | `player: string` | Turn changed to player |
 | `ERROR` | `message: string` | Error occurred |
-| `GAME_STARTED` | `current_turn: string, cards: Card[]` | Game started with dealt cards |
+| `GAME_STARTED` | `current_turn: string, cards: Card[]` | Message sent to a player when game host starts the game |
 
 ## 🗄️ Data Storage
 

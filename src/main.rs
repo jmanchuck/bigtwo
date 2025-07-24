@@ -1,6 +1,9 @@
+mod cards;
+mod game;
 mod room;
 mod session;
 mod shared;
+mod websockets;
 
 use axum::{
     routing::{get, post},
@@ -22,7 +25,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "bigtwo=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "bigtwo=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -59,6 +62,7 @@ async fn main() {
         .route("/session", post(session::create_session))
         .route("/room", post(room::create_room))
         .route("/rooms", get(room::list_rooms))
+        .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
