@@ -1,5 +1,6 @@
 mod cards;
 mod game;
+mod lobby;
 mod room;
 mod session;
 mod shared;
