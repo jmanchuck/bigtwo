@@ -89,11 +89,6 @@ impl EventDispatcher {
 
                     // Spawn each handler in its own task for isolation
                     tokio::spawn(async move {
-                        // Check if handler cares about this event
-                        if !handler.handles_event(&event) {
-                            return;
-                        }
-
                         if let Err(e) =
                             Self::handle_with_retry(handler, event, timeout_duration, max_retries)
                                 .await

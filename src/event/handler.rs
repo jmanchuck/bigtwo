@@ -60,16 +60,6 @@ pub trait EventHandler: Send + Sync {
 
     /// Get a human-readable name for this handler (for logging/debugging)
     fn name(&self) -> &'static str;
-
-    /// Whether this handler cares about the given event type
-    ///
-    /// This is used for optimization - handlers that don't care about
-    /// certain events won't be called for those events.
-    fn handles_event(&self, event: &GameEvent) -> bool {
-        // By default, handlers receive all events and filter internally
-        // Specific handlers can override this for better performance
-        true
-    }
 }
 
 /// A no-op event handler for testing

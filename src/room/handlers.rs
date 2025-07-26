@@ -6,7 +6,10 @@ use super::{
     service::RoomService,
     types::{RoomCreateRequest, RoomResponse},
 };
-use crate::shared::{AppError, AppState};
+use crate::{
+    event::GameEvent,
+    shared::{AppError, AppState},
+};
 
 /// HTTP handler for creating a new room
 ///
@@ -22,6 +25,11 @@ pub async fn create_room(
     // Use injected repository from app state
     let service = RoomService::new(Arc::clone(&state.room_repository));
     let room = service.create_room(request).await?;
+
+    state.event_bus.emit(GameEvent::LobbyCreated {
+        room_id: room.id.clone(),
+        host: room.host_name.clone(),
+    });
 
     info!(
         room_id = %room.id,

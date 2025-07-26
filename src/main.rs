@@ -1,6 +1,7 @@
 mod cards;
 mod event;
 mod game;
+mod gamemanager;
 mod lobby;
 mod room;
 mod session;
@@ -21,6 +22,8 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::event::EventBus;
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     // Initialize tracing
@@ -38,13 +41,13 @@ async fn main() {
     // Easy to switch between implementations:
     let session_repository = Arc::new(InMemorySessionRepository::new());
     let room_repository = Arc::new(InMemoryRoomRepository::new());
-
+    let event_bus = EventBus::with_default_capacity();
     // For production with PostgreSQL:
     // let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     // let pool = sqlx::PgPool::connect(&database_url).await.expect("Failed to connect to database");
     // let session_repository = Arc::new(PostgresSessionRepository::new(pool));
 
-    let app_state = AppState::new(session_repository, room_repository);
+    let app_state = AppState::new(session_repository, room_repository, event_bus);
 
     // Configure CORS for development
     let cors = CorsLayer::new()

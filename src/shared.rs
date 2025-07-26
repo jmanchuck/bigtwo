@@ -7,6 +7,7 @@ use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::event::EventBus;
 use crate::room::repository::RoomRepository;
 use crate::session::repository::SessionRepository;
 
@@ -15,16 +16,19 @@ use crate::session::repository::SessionRepository;
 pub struct AppState {
     pub session_repository: Arc<dyn SessionRepository + Send + Sync>,
     pub room_repository: Arc<dyn RoomRepository + Send + Sync>,
+    pub event_bus: EventBus,
 }
 
 impl AppState {
     pub fn new(
         session_repository: Arc<dyn SessionRepository + Send + Sync>,
         room_repository: Arc<dyn RoomRepository + Send + Sync>,
+        event_bus: EventBus,
     ) -> Self {
         Self {
             session_repository,
             room_repository,
+            event_bus,
         }
     }
 }
@@ -151,6 +155,7 @@ pub mod test_utils {
                 room_repository: self
                     .room_repository
                     .unwrap_or_else(|| Arc::new(DummyRoomRepository)),
+                event_bus: EventBus::new(1000),
             }
         }
     }
