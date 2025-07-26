@@ -1,4 +1,5 @@
 mod cards;
+mod event;
 mod game;
 mod lobby;
 mod room;
