@@ -9,15 +9,18 @@ mod shared;
 mod websockets;
 
 use axum::{
+    http::{HeaderValue, Method},
+    middleware,
     routing::{get, post},
     Router,
 };
 use room::repository::InMemoryRoomRepository;
 use session::repository::InMemorySessionRepository;
 // use session::repository::PostgresSessionRepository; // For production
-use axum::http::{HeaderValue, Method};
 use shared::AppState;
+use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -67,6 +70,13 @@ async fn main() {
         .route("/session", post(session::create_session))
         .route("/room", post(room::create_room))
         .route("/rooms", get(room::list_rooms))
+        .route(
+            "/room/:room_id/join",
+            post(room::join_room).layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                session::jwt_auth,
+            )),
+        )
         .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

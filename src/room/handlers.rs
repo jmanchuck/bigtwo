@@ -1,13 +1,17 @@
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Path, State},
+    Extension, Json,
+};
 use std::sync::Arc;
 use tracing::{info, instrument};
 
 use super::{
     service::RoomService,
-    types::{RoomCreateRequest, RoomResponse},
+    types::{JoinRoomRequest, RoomCreateRequest, RoomResponse},
 };
 use crate::{
     event::GameEvent,
+    session::SessionClaims,
     shared::{AppError, AppState},
 };
 
@@ -57,6 +61,49 @@ pub async fn list_rooms(
     info!(room_count = rooms.len(), "Rooms listed successfully");
 
     Ok(Json(rooms))
+}
+
+/// HTTP handler for joining a room
+///
+/// POST /room/{room_id}
+/// Requires valid session (X-Session-ID header)
+/// Returns room information with updated player count
+#[instrument(name = "join_room", skip(state))]
+pub async fn join_room(
+    State(state): State<AppState>,
+    Path(room_id): Path<String>,
+    Extension(claims): Extension<SessionClaims>,
+    Json(_request): Json<JoinRoomRequest>,
+) -> Result<Json<RoomResponse>, AppError> {
+    info!(
+        room_id = %room_id,
+        username = %claims.username,
+        session_id = %claims.session_id,
+        "Player joining room"
+    );
+
+    let service = RoomService::new(Arc::clone(&state.room_repository));
+
+    let room = service
+        .join_room(room_id.clone(), claims.username.clone())
+        .await?;
+
+    // Emit PlayerJoined event
+    // TODO: We'll need to track actual player names in the room model to populate current_players properly
+    state.event_bus.emit(GameEvent::PlayerJoined {
+        room_id: room.id.clone(),
+        player: claims.username.clone(),
+        current_players: vec![room.host_name.clone(), claims.username.clone()], // Placeholder until we track actual players
+    });
+
+    info!(
+        room_id = %room_id,
+        username = %claims.username,
+        player_count = room.player_count,
+        "Player joined room successfully"
+    );
+
+    Ok(Json(room))
 }
 
 #[cfg(test)]
@@ -353,5 +400,175 @@ mod tests {
         assert_eq!(rooms[0].host_name, "single-host");
         assert_eq!(rooms[0].status, "ONLINE");
         assert_eq!(rooms[0].player_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_join_room_handler() {
+        use crate::session::SessionClaims;
+
+        let room_repository = Arc::new(InMemoryRoomRepository::new());
+        let app_state = AppStateBuilder::new()
+            .with_room_repository(room_repository.clone())
+            .build();
+
+        // Create a room first using the service directly
+        let service = RoomService::new(room_repository);
+        let request = RoomCreateRequest {
+            host_name: "test-host".to_string(),
+        };
+        let created_room = service.create_room(request).await.unwrap();
+
+        // Create mock session claims
+        let session_claims = SessionClaims {
+            session_id: "test-session-id".to_string(),
+            username: "joining-player".to_string(),
+            exp: 9999999999, // Far future expiration
+            iat: 1234567890, // Past issued time
+        };
+
+        // Create router with join_room handler
+        let app = Router::new()
+            .route("/room/:room_id/join", axum::routing::post(join_room))
+            .with_state(app_state);
+
+        // Create request with session claims in extensions (simulating middleware)
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(&format!("/room/{}/join", created_room.id))
+            .header("content-type", "application/json")
+            .body(Body::from("{}")) // Empty JSON body for JoinRoomRequest
+            .unwrap();
+
+        // Add session claims to request extensions (this is what the middleware would do)
+        request.extensions_mut().insert(session_claims);
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Parse response body
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let room_response: RoomResponse = serde_json::from_slice(&body).unwrap();
+
+        // Verify room response shows incremented player count
+        assert_eq!(room_response.id, created_room.id);
+        assert_eq!(room_response.host_name, "test-host");
+        assert_eq!(room_response.status, "ONLINE");
+        assert_eq!(room_response.player_count, 2); // Host + 1 new player
+    }
+
+    #[tokio::test]
+    async fn test_join_room_handler_room_not_found() {
+        let room_repository = Arc::new(InMemoryRoomRepository::new());
+        let app_state = AppStateBuilder::new()
+            .with_room_repository(room_repository)
+            .build();
+
+        let app = Router::new()
+            .route("/room/:room_id", axum::routing::post(join_room))
+            .with_state(app_state);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/room/nonexistent-room")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_join_room_handler_room_full() {
+        let room_repository = Arc::new(InMemoryRoomRepository::new());
+        let app_state = AppStateBuilder::new()
+            .with_room_repository(room_repository.clone())
+            .build();
+
+        // Create a room and fill it to capacity using the service directly
+        let service = RoomService::new(room_repository);
+        let request = RoomCreateRequest {
+            host_name: "test-host".to_string(),
+        };
+        let created_room = service.create_room(request).await.unwrap();
+
+        // Fill room to capacity (3 more players to reach 4 total)
+        for _ in 0..3 {
+            service
+                .join_room(created_room.id.clone(), "test-player".to_string())
+                .await
+                .unwrap();
+        }
+
+        let app = Router::new()
+            .route("/room/:room_id", axum::routing::post(join_room))
+            .with_state(app_state);
+
+        // Try to join the full room
+        let request = Request::builder()
+            .method("POST")
+            .uri(&format!("/room/{}", created_room.id))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_join_room_handler_with_session() {
+        use crate::session::SessionClaims;
+
+        let room_repository = Arc::new(InMemoryRoomRepository::new());
+        let app_state = AppStateBuilder::new()
+            .with_room_repository(room_repository.clone())
+            .build();
+
+        // Create a room first using the service directly
+        let service = RoomService::new(room_repository);
+        let request = RoomCreateRequest {
+            host_name: "test-host".to_string(),
+        };
+        let created_room = service.create_room(request).await.unwrap();
+
+        // Create mock session claims
+        let session_claims = SessionClaims {
+            session_id: "test-session-id".to_string(),
+            username: "test-player".to_string(),
+            exp: 9999999999, // Far future expiration
+            iat: 1234567890, // Past issued time
+        };
+
+        // Create router with join_room handler
+        let app = Router::new()
+            .route("/room/:room_id/join", axum::routing::post(join_room))
+            .with_state(app_state);
+
+        // Create request with session claims in extensions (simulating middleware)
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(&format!("/room/{}/join", created_room.id))
+            .header("content-type", "application/json")
+            .body(Body::from("{}")) // Empty JSON body for JoinRoomRequest
+            .unwrap();
+
+        // Add session claims to request extensions (this is what the middleware would do)
+        request.extensions_mut().insert(session_claims);
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Parse response body
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let room_response: RoomResponse = serde_json::from_slice(&body).unwrap();
+
+        // Verify room response shows incremented player count
+        assert_eq!(room_response.id, created_room.id);
+        assert_eq!(room_response.host_name, "test-host");
+        assert_eq!(room_response.status, "ONLINE");
+        assert_eq!(room_response.player_count, 2); // Host + 1 new player (test-player)
     }
 }

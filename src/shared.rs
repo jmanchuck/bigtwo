@@ -118,6 +118,20 @@ pub mod test_utils {
         async fn list_rooms(&self) -> Result<Vec<RoomModel>, AppError> {
             Ok(Vec::new())
         }
+        async fn try_join_room(
+            &self,
+            _room_id: &str,
+            _player_name: &str,
+        ) -> Result<crate::room::repository::JoinRoomResult, AppError> {
+            Ok(crate::room::repository::JoinRoomResult::Success(
+                RoomModel {
+                    id: _room_id.to_string(),
+                    host_name: _player_name.to_string(),
+                    status: "ONLINE".to_string(),
+                    player_count: 1,
+                },
+            ))
+        }
     }
 
     /// Builder for creating AppState with overrides for testing

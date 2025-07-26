@@ -1,10 +1,21 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use super::models::RoomModel;
 use crate::shared::AppError;
+
+/// Result of attempting to join a room
+#[derive(Debug, Clone)]
+pub enum JoinRoomResult {
+    /// Successfully joined the room, returns updated room data
+    Success(RoomModel),
+    /// Room is at capacity (4 players)
+    RoomFull,
+    /// Room does not exist
+    RoomNotFound,
+}
 
 /// Trait for room repository operations
 #[async_trait]
@@ -12,6 +23,14 @@ pub trait RoomRepository {
     async fn create_room(&self, room: &RoomModel) -> Result<(), AppError>;
     async fn get_room(&self, room_id: &str) -> Result<Option<RoomModel>, AppError>;
     async fn list_rooms(&self) -> Result<Vec<RoomModel>, AppError>;
+
+    /// Atomically attempts to join a room by checking capacity and incrementing player count
+    /// This prevents race conditions when multiple players try to join simultaneously
+    async fn try_join_room(
+        &self,
+        room_id: &str,
+        player_name: &str,
+    ) -> Result<JoinRoomResult, AppError>;
 }
 
 /// In-memory implementation of RoomRepository for development and testing
@@ -71,6 +90,47 @@ impl RoomRepository for InMemoryRoomRepository {
 
         debug!("Rooms listed successfully in memory");
         Ok(room_list)
+    }
+
+    #[instrument(skip(self))]
+    async fn try_join_room(
+        &self,
+        room_id: &str,
+        player_name: &str,
+    ) -> Result<JoinRoomResult, AppError> {
+        debug!(room_id = %room_id, player_name = %player_name, "Attempting to join room atomically");
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        // Get the room or return RoomNotFound
+        let room = match rooms.get_mut(room_id) {
+            Some(room) => room,
+            None => {
+                debug!(room_id = %room_id, "Room not found");
+                return Ok(JoinRoomResult::RoomNotFound);
+            }
+        };
+
+        // Check if room is at capacity
+        if room.player_count >= 4 {
+            debug!(room_id = %room_id, current_count = room.player_count, "Room is full");
+            return Ok(JoinRoomResult::RoomFull);
+        }
+
+        // Atomically increment the player count
+        room.player_count += 1;
+
+        // Clone the updated room data to return
+        let updated_room = room.clone();
+
+        info!(
+            room_id = %room_id,
+            player_name = %player_name,
+            new_player_count = updated_room.player_count,
+            "Player joined room successfully (atomic)"
+        );
+
+        Ok(JoinRoomResult::Success(updated_room))
     }
 }
 
