@@ -26,6 +26,7 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::event::EventBus;
+use crate::websockets::InMemoryConnectionManager;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -44,13 +45,19 @@ async fn main() {
     // Easy to switch between implementations:
     let session_repository = Arc::new(InMemorySessionRepository::new());
     let room_repository = Arc::new(InMemoryRoomRepository::new());
-    let event_bus = EventBus::with_default_capacity();
+    let event_bus = EventBus::new();
+    let connection_manager = Arc::new(InMemoryConnectionManager::new());
     // For production with PostgreSQL:
     // let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     // let pool = sqlx::PgPool::connect(&database_url).await.expect("Failed to connect to database");
     // let session_repository = Arc::new(PostgresSessionRepository::new(pool));
 
-    let app_state = AppState::new(session_repository, room_repository, event_bus);
+    let app_state = AppState::new(
+        session_repository,
+        room_repository,
+        event_bus,
+        connection_manager,
+    );
 
     // Configure CORS for development
     let cors = CorsLayer::new()
@@ -77,7 +84,6 @@ async fn main() {
                 session::jwt_auth,
             )),
         )
-        .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);

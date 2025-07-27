@@ -1,10 +1,8 @@
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::{
-    event::{EventError, EventHandler, GameEvent},
     game::Game,
     lobby::{Lobby, LobbyError},
 };
@@ -31,22 +29,5 @@ impl GameManager {
         let mut rooms = self.rooms.write().await;
         rooms.insert(room_id, RoomState::Lobby(lobby));
         Ok(())
-    }
-}
-
-#[async_trait]
-impl EventHandler for GameManager {
-    async fn handle(&self, event: &GameEvent) -> Result<(), EventError> {
-        match event {
-            GameEvent::LobbyCreated { room_id, host } => self
-                .create_lobby(room_id.clone(), host.clone())
-                .await
-                .map_err(|e| EventError::non_retryable(format!("Failed to create lobby: {}", e))),
-            _ => Ok(()),
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        "GameManager"
     }
 }

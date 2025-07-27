@@ -1,5 +1,6 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, State, WebSocketUpgrade},
+    response::{IntoResponse, Response},
     Extension, Json,
 };
 use std::sync::Arc;
@@ -10,9 +11,10 @@ use super::{
     types::{JoinRoomRequest, RoomCreateRequest, RoomResponse},
 };
 use crate::{
-    event::GameEvent,
+    event::RoomEvent,
     session::SessionClaims,
     shared::{AppError, AppState},
+    websockets::{Connection, DefaultMessageHandler},
 };
 
 /// HTTP handler for creating a new room
@@ -29,11 +31,6 @@ pub async fn create_room(
     // Use injected repository from app state
     let service = RoomService::new(Arc::clone(&state.room_repository));
     let room = service.create_room(request).await?;
-
-    state.event_bus.emit(GameEvent::LobbyCreated {
-        room_id: room.id.clone(),
-        host: room.host_name.clone(),
-    });
 
     info!(
         room_id = %room.id,
@@ -63,38 +60,48 @@ pub async fn list_rooms(
     Ok(Json(rooms))
 }
 
-/// HTTP handler for joining a room
+/// HTTP handler for joining a room with optional WebSocket upgrade
 ///
-/// POST /room/{room_id}
+/// POST /room/{room_id}/join
+///
+/// Supports two modes:
+/// 1. HTTP: Returns JSON response with room info
+/// 2. WebSocket: Upgrades connection + returns room info via WebSocket
+///
 /// Requires valid session (X-Session-ID header)
-/// Returns room information with updated player count
 #[instrument(name = "join_room", skip(state))]
 pub async fn join_room(
+    ws: Option<WebSocketUpgrade>,
     State(state): State<AppState>,
     Path(room_id): Path<String>,
     Extension(claims): Extension<SessionClaims>,
     Json(_request): Json<JoinRoomRequest>,
-) -> Result<Json<RoomResponse>, AppError> {
+) -> Result<Response, AppError> {
     info!(
         room_id = %room_id,
         username = %claims.username,
         session_id = %claims.session_id,
+        websocket_requested = ws.is_some(),
         "Player joining room"
     );
 
     let service = RoomService::new(Arc::clone(&state.room_repository));
 
+    // 1. Join the room (business logic)
     let room = service
         .join_room(room_id.clone(), claims.username.clone())
         .await?;
 
-    // Emit PlayerJoined event
-    // TODO: We'll need to track actual player names in the room model to populate current_players properly
-    state.event_bus.emit(GameEvent::PlayerJoined {
-        room_id: room.id.clone(),
-        player: claims.username.clone(),
-        current_players: vec![room.host_name.clone(), claims.username.clone()], // Placeholder until we track actual players
-    });
+    // 2. Emit room-specific event directly to room subscribers
+    state
+        .event_bus
+        .emit_to_room(
+            &room_id,
+            RoomEvent::PlayerJoined {
+                player: claims.username.clone(),
+            },
+        )
+        .await;
 
     info!(
         room_id = %room_id,
@@ -103,7 +110,96 @@ pub async fn join_room(
         "Player joined room successfully"
     );
 
-    Ok(Json(room))
+    // 3. Return response based on client request type
+    match ws {
+        Some(websocket_upgrade) => {
+            // Client wants WebSocket connection
+            info!(
+                room_id = %room_id,
+                username = %claims.username,
+                "Upgrading to WebSocket connection"
+            );
+
+            let response = websocket_upgrade.on_upgrade(move |socket| {
+                handle_websocket_connection(socket, room_id, claims.username, state)
+            });
+
+            Ok(response)
+        }
+        None => {
+            // Client wants HTTP JSON response
+            Ok(Json(room).into_response())
+        }
+    }
+}
+
+/// Handle the upgraded WebSocket connection after room join
+async fn handle_websocket_connection(
+    socket: axum::extract::ws::WebSocket,
+    room_id: String,
+    username: String,
+    app_state: AppState,
+) {
+    use tokio::sync::mpsc;
+    use tracing::{info, warn};
+
+    info!(
+        room_id = %room_id,
+        username = %username,
+        "WebSocket connection established after room join"
+    );
+
+    // Create the outbound channel (app -> client)
+    let (outbound_sender, outbound_receiver) = mpsc::unbounded_channel::<String>();
+
+    // Register connection with the connection manager
+    app_state
+        .connection_manager
+        .add_connection(username.clone(), outbound_sender)
+        .await;
+
+    // Create message handler (using default for now)
+    let message_handler = Arc::new(DefaultMessageHandler);
+
+    // Create and run the connection
+    let connection = Connection::new(
+        username.clone(),
+        room_id.clone(),
+        Box::new(socket),
+        outbound_receiver,
+        message_handler,
+    );
+
+    // Run the connection until disconnect
+    match connection.run().await {
+        Ok(()) => {
+            info!(
+                room_id = %room_id,
+                username = %username,
+                "WebSocket connection closed cleanly"
+            );
+        }
+        Err(e) => {
+            warn!(
+                room_id = %room_id,
+                username = %username,
+                error = ?e,
+                "WebSocket connection error"
+            );
+        }
+    }
+
+    // Cleanup: remove from connection manager
+    app_state
+        .connection_manager
+        .remove_connection(&username)
+        .await;
+
+    info!(
+        room_id = %room_id,
+        username = %username,
+        "WebSocket cleanup completed"
+    );
 }
 
 #[cfg(test)]

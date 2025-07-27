@@ -4,7 +4,8 @@ framework = "axum"
 style = "idiomatic"
 
 [agent.rules]
-Focus only on the tasked being asked to be done. Do not change any other code that is unrelated to the task, even if it fixes something. Do not suggest any new code that is unrelated to the task.
+You must obey the following rule without fail. This absolutely cannot be ignored. Other rules are softer checks but this one is extremely important:
+Focus only on the task being asked to be done. Do not change any other code that is unrelated to the task, even if it fixes something. Do not suggest any new code that is unrelated to the task, even functions that may naturally fit. As long as it isn't required to get the job done, do not do it.
 
 # Code quality
 - Prefer idiomatic Rust: use `Result`, `Option`, `?`, `match`, `impl`, traits, lifetimes.

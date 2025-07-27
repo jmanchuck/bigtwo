@@ -1,16 +1,15 @@
 // Event-driven architecture components
 //
-// This module provides the core infrastructure for event-driven communication
-// between different parts of the game server.
+// Simple event system with global and room-specific events
 
-// Public API - what other modules can use
+// Public API
 pub use bus::EventBus;
-pub use dispatcher::EventDispatcher;
-pub use events::GameEvent;
-pub use handler::{EventError, EventHandler};
+pub use events::RoomEvent;
+pub use room_handler::{RoomEventError, RoomEventHandler};
+pub use room_subscription::RoomSubscription;
 
 // Internal modules
 mod bus;
-mod dispatcher;
 mod events;
-mod handler;
+mod room_handler;
+mod room_subscription;

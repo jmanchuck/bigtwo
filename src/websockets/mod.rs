@@ -1,5 +1,12 @@
 // Public API - what other modules can use
-pub use handlers::websocket_handler;
+pub use connection_manager::{ConnectionManager, InMemoryConnectionManager};
+pub use handler::{websocket_handler, DefaultMessageHandler};
+pub use messages::WebSocketMessage;
+pub use room_subscriber::WebSocketRoomSubscriber;
+pub use socket::{Connection, MessageHandler, SocketError, SocketWrapper};
 
-// Internal modules
-mod handlers;
+mod connection_manager;
+mod handler;
+mod messages;
+mod room_subscriber;
+mod socket;

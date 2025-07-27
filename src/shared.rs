@@ -10,6 +10,7 @@ use thiserror::Error;
 use crate::event::EventBus;
 use crate::room::repository::RoomRepository;
 use crate::session::repository::SessionRepository;
+use crate::websockets::ConnectionManager;
 
 /// Shared application state containing all dependencies
 #[derive(Clone)]
@@ -17,6 +18,7 @@ pub struct AppState {
     pub session_repository: Arc<dyn SessionRepository + Send + Sync>,
     pub room_repository: Arc<dyn RoomRepository + Send + Sync>,
     pub event_bus: EventBus,
+    pub connection_manager: Arc<dyn ConnectionManager>,
 }
 
 impl AppState {
@@ -24,11 +26,13 @@ impl AppState {
         session_repository: Arc<dyn SessionRepository + Send + Sync>,
         room_repository: Arc<dyn RoomRepository + Send + Sync>,
         event_bus: EventBus,
+        connection_manager: Arc<dyn ConnectionManager>,
     ) -> Self {
         Self {
             session_repository,
             room_repository,
             event_bus,
+            connection_manager,
         }
     }
 }
@@ -134,10 +138,30 @@ pub mod test_utils {
         }
     }
 
+    /// Dummy connection manager that does nothing - for tests that don't care about websockets
+    pub struct DummyConnectionManager;
+
+    #[async_trait]
+    impl ConnectionManager for DummyConnectionManager {
+        async fn add_connection(
+            &self,
+            _username: String,
+            _sender: tokio::sync::mpsc::UnboundedSender<String>,
+        ) {
+        }
+
+        async fn remove_connection(&self, _username: &str) {}
+
+        async fn send_to_player(&self, _username: &str, _message: &str) {}
+
+        async fn send_to_players(&self, _usernames: &[String], _message: &str) {}
+    }
+
     /// Builder for creating AppState with overrides for testing
     pub struct AppStateBuilder {
         session_repository: Option<Arc<dyn SessionRepository + Send + Sync>>,
         room_repository: Option<Arc<dyn RoomRepository + Send + Sync>>,
+        connection_manager: Option<Arc<dyn ConnectionManager>>,
     }
 
     impl AppStateBuilder {
@@ -145,6 +169,7 @@ pub mod test_utils {
             Self {
                 session_repository: None,
                 room_repository: None,
+                connection_manager: None,
             }
         }
 
@@ -161,6 +186,11 @@ pub mod test_utils {
             self
         }
 
+        pub fn with_connection_manager(mut self, manager: Arc<dyn ConnectionManager>) -> Self {
+            self.connection_manager = Some(manager);
+            self
+        }
+
         pub fn build(self) -> AppState {
             AppState {
                 session_repository: self
@@ -169,7 +199,10 @@ pub mod test_utils {
                 room_repository: self
                     .room_repository
                     .unwrap_or_else(|| Arc::new(DummyRoomRepository)),
-                event_bus: EventBus::new(1000),
+                event_bus: EventBus::new(),
+                connection_manager: self
+                    .connection_manager
+                    .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
             }
         }
     }
