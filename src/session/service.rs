@@ -27,11 +27,11 @@ impl SessionService {
     #[instrument(skip(self))]
     pub async fn create_session(&self) -> Result<SessionResponse, AppError> {
         let username = self.generate_username();
-        debug!(username = %username, "Generated username");
+        info!(username = %username, "Creating session with username");
 
         // Create session model for database
         let session_model = SessionModel::new(username.clone(), self.token_config.expiration_days);
-        debug!(session_id = %session_model.id, "Generated session ID");
+        info!(session_id = %session_model.id, "Generated session ID");
 
         // Store session in database
         self.repository.create_session(&session_model).await?;
@@ -51,11 +51,11 @@ impl SessionService {
     /// Validates a session token and returns the claims if valid
     #[instrument(skip(self, token))]
     pub async fn validate_session(&self, token: &str) -> Result<SessionClaims, AppError> {
-        debug!("Validating session token");
+        info!("Validating session token");
 
         // First validate JWT token structure and signature
         let claims = self.token_config.validate_token(token)?;
-        debug!(
+        info!(
             username = %claims.username,
             session_id = %claims.session_id,
             "JWT token structure validated"
@@ -95,7 +95,7 @@ impl SessionService {
     /// Revokes a session by removing it from the database
     #[instrument(skip(self))]
     pub async fn revoke_session(&self, session_id: &str) -> Result<(), AppError> {
-        debug!(session_id = %session_id, "Revoking session");
+        info!(session_id = %session_id, "Revoking session");
 
         self.repository.delete_session(session_id).await?;
 
@@ -106,7 +106,7 @@ impl SessionService {
     /// Extends a session's expiration time
     #[instrument(skip(self))]
     pub async fn extend_session(&self, session_id: &str) -> Result<(), AppError> {
-        debug!(session_id = %session_id, "Extending session expiration");
+        info!(session_id = %session_id, "Extending session expiration");
 
         let mut session = self
             .repository
@@ -124,7 +124,7 @@ impl SessionService {
     /// Cleans up expired sessions from the database
     #[instrument(skip(self))]
     pub async fn cleanup_expired_sessions(&self) -> Result<u64, AppError> {
-        debug!("Starting cleanup of expired sessions");
+        info!("Starting cleanup of expired sessions");
 
         let removed_count = self.repository.cleanup_expired_sessions().await?;
 

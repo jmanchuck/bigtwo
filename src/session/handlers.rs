@@ -1,31 +1,44 @@
-use axum::{extract::State, Json};
+use axum::{extract::State, http::StatusCode, response::Json, Extension};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{info, instrument};
 
-use super::{service::SessionService, types::SessionResponse};
+use super::{repository::SessionRepository, service::SessionService, types::SessionClaims};
 use crate::shared::{AppError, AppState};
 
-/// HTTP handler for creating a new session
-///
-/// POST /session
-/// Returns a JWT token as session_id and generated username
-#[instrument(name = "create_session", skip(state))]
-pub async fn create_session(
-    State(state): State<AppState>,
-) -> Result<Json<SessionResponse>, AppError> {
+/// Creates a new user session
+#[instrument(skip(state))]
+pub async fn create_session(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     info!("Creating new session");
 
-    // Use injected repository from app state
     let service = SessionService::new(Arc::clone(&state.session_repository));
-    let session = service.create_session().await?;
+    let session_response = service.create_session().await?;
 
     info!(
-        username = %session.username,
-        session_id_length = session.session_id.len(),
+        username = %session_response.username,
+        session_id_length = session_response.session_id.len(),
         "Session created successfully"
     );
 
-    Ok(Json(session))
+    Ok(Json(json!({
+        "session_id": session_response.session_id,
+        "username": session_response.username
+    })))
+}
+
+/// Validates the current session without side effects
+/// This endpoint is specifically for session validation - no business logic
+#[instrument(skip(_state))]
+pub async fn validate_session(
+    _state: State<AppState>,
+    Extension(claims): Extension<SessionClaims>,
+) -> Result<Json<Value>, AppError> {
+    // If we reach here, the session is valid (middleware already validated it)
+    Ok(Json(json!({
+        "valid": true,
+        "username": claims.username,
+        "session_id": claims.session_id
+    })))
 }
 
 #[cfg(test)]
@@ -70,11 +83,11 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
-        let session_response: SessionResponse = serde_json::from_slice(&body).unwrap();
+        let session_response: Value = serde_json::from_slice(&body).unwrap();
 
         // Verify session response
-        assert!(!session_response.session_id.is_empty());
-        assert!(!session_response.username.is_empty());
-        assert!(session_response.username.contains('-')); // Pet names have dashes
+        assert!(!session_response["session_id"].as_str().unwrap().is_empty());
+        assert!(!session_response["username"].as_str().unwrap().is_empty());
+        assert!(session_response["username"].as_str().unwrap().contains('-')); // Pet names have dashes
     }
 }

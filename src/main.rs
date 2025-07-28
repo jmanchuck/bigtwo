@@ -15,12 +15,13 @@ use axum::{
     Router,
 };
 use room::repository::InMemoryRoomRepository;
-use session::repository::InMemorySessionRepository;
-// use session::repository::PostgresSessionRepository; // For production
+use session::repository::{
+    InMemorySessionRepository, PostgresSessionRepository, SessionRepository,
+};
 use shared::AppState;
 use std::sync::Arc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::event::EventBus;
@@ -40,15 +41,30 @@ async fn main() {
     info!("Starting Big Two game server");
 
     // Create shared application state with dependency injection
-    // Easy to switch between implementations:
-    let session_repository = Arc::new(InMemorySessionRepository::new());
+    // Smart configuration: Use PostgreSQL if DATABASE_URL is set, otherwise in-memory
+    let session_repository: Arc<dyn SessionRepository + Send + Sync> =
+        if let Ok(database_url) = std::env::var("DATABASE_URL") {
+            info!("Using PostgreSQL session storage (persistent across restarts)");
+            match sqlx::PgPool::connect(&database_url).await {
+                Ok(pool) => {
+                    info!("✅ Connected to PostgreSQL successfully");
+                    Arc::new(PostgresSessionRepository::new(pool))
+                }
+                Err(e) => {
+                    warn!("❌ Failed to connect to PostgreSQL: {}", e);
+                    info!("🔄 Falling back to in-memory session storage");
+                    Arc::new(InMemorySessionRepository::new())
+                }
+            }
+        } else {
+            info!("Using in-memory session storage (sessions lost on restart)");
+            info!("💡 Set DATABASE_URL to use PostgreSQL for persistent sessions");
+            Arc::new(InMemorySessionRepository::new())
+        };
+
     let room_repository = Arc::new(InMemoryRoomRepository::new());
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
-    // For production with PostgreSQL:
-    // let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // let pool = sqlx::PgPool::connect(&database_url).await.expect("Failed to connect to database");
-    // let session_repository = Arc::new(PostgresSessionRepository::new(pool));
 
     let app_state = AppState::new(
         session_repository,
@@ -73,6 +89,13 @@ async fn main() {
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/session", post(session::create_session))
+        .route(
+            "/session/validate",
+            get(session::validate_session).layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                session::jwt_auth,
+            )),
+        )
         .route("/room", post(room::create_room))
         .route("/rooms", get(room::list_rooms))
         .route(
