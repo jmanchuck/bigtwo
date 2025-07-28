@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
+use crate::room::{repository::LeaveRoomResult, service::RoomService};
 use crate::{session::SessionClaims, shared::AppState};
 
 use super::socket::{Connection, MessageHandler};
@@ -107,11 +108,67 @@ async fn handle_websocket_connection(
         }
     }
 
-    // Cleanup: remove from connection manager
+    // Cleanup: remove from connection manager and leave the room
     app_state
         .connection_manager
         .remove_connection(&username)
         .await;
+
+    // Remove player from room in database
+    let room_service = RoomService::new(Arc::clone(&app_state.room_repository));
+
+    match room_service
+        .leave_room(room_id.clone(), username.clone())
+        .await
+    {
+        Ok(LeaveRoomResult::Success(_)) => {
+            // Emit PlayerLeft event to notify other players
+            app_state
+                .event_bus
+                .emit_to_room(
+                    &room_id,
+                    crate::event::RoomEvent::PlayerLeft {
+                        player: username.clone(),
+                    },
+                )
+                .await;
+
+            info!(
+                room_id = %room_id,
+                username = %username,
+                "Player left room via WebSocket disconnect"
+            );
+        }
+        Ok(LeaveRoomResult::RoomDeleted) => {
+            info!(
+                room_id = %room_id,
+                username = %username,
+                "Room deleted - last player disconnected"
+            );
+        }
+        Ok(LeaveRoomResult::PlayerNotInRoom) => {
+            debug!(
+                room_id = %room_id,
+                username = %username,
+                "Player was not in room during disconnect cleanup"
+            );
+        }
+        Ok(LeaveRoomResult::RoomNotFound) => {
+            debug!(
+                room_id = %room_id,
+                username = %username,
+                "Room not found during disconnect cleanup"
+            );
+        }
+        Err(e) => {
+            warn!(
+                room_id = %room_id,
+                username = %username,
+                error = ?e,
+                "Failed to remove player from room during disconnect"
+            );
+        }
+    }
 
     info!(
         room_id = %room_id,

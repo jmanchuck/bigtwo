@@ -5,4 +5,6 @@ use serde::{Deserialize, Serialize};
 pub enum RoomEvent {
     /// A player joined this room
     PlayerJoined { player: String },
+    /// A player left this room
+    PlayerLeft { player: String },
 }

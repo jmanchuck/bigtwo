@@ -4,17 +4,17 @@ use axum::{
     Extension, Json,
 };
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use super::{
     service::RoomService,
     types::{JoinRoomRequest, RoomCreateRequest, RoomResponse},
 };
 use crate::{
-    event::RoomEvent,
+    event::{RoomEvent, RoomSubscription},
     session::SessionClaims,
     shared::{AppError, AppState},
-    websockets::{Connection, DefaultMessageHandler},
+    websockets::{room_subscriber::WebSocketRoomSubscriber, Connection, DefaultMessageHandler},
 };
 
 /// HTTP handler for creating a new room
@@ -32,10 +32,26 @@ pub async fn create_room(
     let service = RoomService::new(Arc::clone(&state.room_repository));
     let room = service.create_room(request).await?;
 
+    // Start WebSocket room subscription for this room
+    let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
+        Arc::clone(&state.room_repository),
+        Arc::clone(&state.connection_manager),
+    ));
+
+    let room_subscription =
+        RoomSubscription::new(room.id.clone(), room_subscriber, state.event_bus.clone());
+
+    // Start the subscription background task
+    let _subscription_handle = room_subscription.start().await;
+
+    // Note: We're not storing the handle because the task will run until the room is deleted
+    // and there are no more events. In a production system, you might want to store handles
+    // for cleanup, but for this implementation, letting them run independently is fine.
+
     info!(
         room_id = %room.id,
         host_name = %room.host_name,
-        "Room created successfully"
+        "Room created successfully with WebSocket subscription active"
     );
 
     Ok(Json(room))
@@ -189,11 +205,68 @@ async fn handle_websocket_connection(
         }
     }
 
-    // Cleanup: remove from connection manager
+    // Cleanup: remove from connection manager and leave the room
     app_state
         .connection_manager
         .remove_connection(&username)
         .await;
+
+    // Remove player from room in database
+    use crate::room::{repository::LeaveRoomResult, service::RoomService};
+    let room_service = RoomService::new(Arc::clone(&app_state.room_repository));
+
+    match room_service
+        .leave_room(room_id.clone(), username.clone())
+        .await
+    {
+        Ok(LeaveRoomResult::Success(_)) => {
+            // Emit PlayerLeft event to notify other players
+            app_state
+                .event_bus
+                .emit_to_room(
+                    &room_id,
+                    crate::event::RoomEvent::PlayerLeft {
+                        player: username.clone(),
+                    },
+                )
+                .await;
+
+            info!(
+                room_id = %room_id,
+                username = %username,
+                "Player left room via WebSocket disconnect"
+            );
+        }
+        Ok(LeaveRoomResult::RoomDeleted) => {
+            info!(
+                room_id = %room_id,
+                username = %username,
+                "Room deleted - last player disconnected"
+            );
+        }
+        Ok(LeaveRoomResult::PlayerNotInRoom) => {
+            debug!(
+                room_id = %room_id,
+                username = %username,
+                "Player was not in room during disconnect cleanup"
+            );
+        }
+        Ok(LeaveRoomResult::RoomNotFound) => {
+            debug!(
+                room_id = %room_id,
+                username = %username,
+                "Room not found during disconnect cleanup"
+            );
+        }
+        Err(e) => {
+            warn!(
+                room_id = %room_id,
+                username = %username,
+                error = ?e,
+                "Failed to remove player from room during disconnect"
+            );
+        }
+    }
 
     info!(
         room_id = %room_id,

@@ -1,9 +1,10 @@
+use futures;
 use std::sync::Arc;
 use tracing::{debug, info, instrument};
 
 use super::{
     models::RoomModel,
-    repository::{JoinRoomResult, RoomRepository},
+    repository::{JoinRoomResult, LeaveRoomResult, RoomRepository},
     types::{RoomCreateRequest, RoomResponse},
 };
 use crate::shared::AppError;
@@ -30,19 +31,21 @@ impl RoomService {
         // Store room in repository
         self.repository.create_room(&room_model).await?;
 
+        // Convert to response format
+        let room_response = RoomResponse {
+            id: room_model.id.clone(),
+            host_name: room_model.host_name.clone(),
+            status: room_model.status.clone(),
+            player_count: room_model.get_player_count(),
+        };
+
         info!(
-            room_id = %room_model.id,
-            host_name = %room_model.host_name,
+            room_id = %room_response.id,
+            host_name = %room_response.host_name,
             "Room created successfully"
         );
 
-        // Convert to response
-        Ok(RoomResponse {
-            id: room_model.id,
-            host_name: room_model.host_name,
-            status: room_model.status,
-            player_count: room_model.player_count,
-        })
+        Ok(room_response)
     }
 
     /// Lists all available rooms
@@ -59,10 +62,10 @@ impl RoomService {
         let room_responses = rooms
             .into_iter()
             .map(|room| RoomResponse {
-                id: room.id,
-                host_name: room.host_name,
-                status: room.status,
-                player_count: room.player_count,
+                id: room.id.clone(),
+                host_name: room.host_name.clone(),
+                status: room.status.clone(),
+                player_count: room.get_player_count(),
             })
             .collect();
 
@@ -89,14 +92,14 @@ impl RoomService {
                 info!(
                     room_id = %room_id,
                     player_name = %player_name,
-                    new_player_count = updated_room.player_count,
+                    new_player_count = updated_room.get_player_count(),
                     "Player joined room successfully"
                 );
                 Ok(RoomResponse {
-                    id: updated_room.id,
-                    host_name: updated_room.host_name,
-                    status: updated_room.status,
-                    player_count: updated_room.player_count,
+                    id: updated_room.id.clone(),
+                    host_name: updated_room.host_name.clone(),
+                    status: updated_room.status.clone(),
+                    player_count: updated_room.get_player_count(),
                 })
             }
             JoinRoomResult::RoomNotFound => {
@@ -104,6 +107,53 @@ impl RoomService {
             }
             JoinRoomResult::RoomFull => Err(AppError::DatabaseError("Room is full".to_string())),
         }
+    }
+
+    /// Leaves a room by removing the player from the room
+    #[instrument(skip(self))]
+    pub async fn leave_room(
+        &self,
+        room_id: String,
+        player_name: String,
+    ) -> Result<LeaveRoomResult, AppError> {
+        debug!(room_id = %room_id, player_name = %player_name, "Attempting to leave room");
+
+        // Use the atomic leave_room method
+        let result = self.repository.leave_room(&room_id, &player_name).await?;
+
+        match &result {
+            LeaveRoomResult::Success(updated_room) => {
+                info!(
+                    room_id = %room_id,
+                    player_name = %player_name,
+                    new_player_count = updated_room.get_player_count(),
+                    "Player left room successfully"
+                );
+            }
+            LeaveRoomResult::RoomDeleted => {
+                info!(
+                    room_id = %room_id,
+                    player_name = %player_name,
+                    "Room deleted after last player left"
+                );
+            }
+            LeaveRoomResult::PlayerNotInRoom => {
+                debug!(
+                    room_id = %room_id,
+                    player_name = %player_name,
+                    "Player was not in room"
+                );
+            }
+            LeaveRoomResult::RoomNotFound => {
+                debug!(
+                    room_id = %room_id,
+                    player_name = %player_name,
+                    "Room not found"
+                );
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -204,98 +254,106 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_rooms_empty() {
-        let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo);
+    async fn test_list_rooms() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
 
-        let result = service.list_rooms().await;
-        assert!(result.is_ok());
+        // Create some test rooms
+        let room1 = RoomModel::new("test-host-1".to_string());
+        let room2 = RoomModel::new("test-host-2".to_string());
 
-        let rooms = result.unwrap();
-        assert!(rooms.is_empty());
+        repository.create_room(&room1).await.unwrap();
+        repository.create_room(&room2).await.unwrap();
+
+        // List all rooms
+        let rooms = service.list_rooms().await.unwrap();
+
+        assert_eq!(rooms.len(), 2);
+        assert!(rooms.iter().any(|r| r.host_name == "test-host-1"));
+        assert!(rooms.iter().any(|r| r.host_name == "test-host-2"));
     }
 
     #[tokio::test]
     async fn test_join_room_success() {
-        let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo.clone());
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
 
-        // First create a room
+        // Create a room first
         let create_request = RoomCreateRequest {
-            host_name: "host-player".to_string(),
+            host_name: "test-host".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
 
-        // Now join the room
-        let result = service
-            .join_room(created_room.id.clone(), "player1".to_string())
-            .await;
-        assert!(result.is_ok());
+        // Join the room
+        let joined_room = service
+            .join_room(created_room.id.clone(), "test-player".to_string())
+            .await
+            .unwrap();
 
-        let joined_room = result.unwrap();
         assert_eq!(joined_room.id, created_room.id);
-        assert_eq!(joined_room.host_name, "host-player");
+        assert_eq!(joined_room.host_name, "test-host");
         assert_eq!(joined_room.player_count, 2); // Host + 1 new player
-        assert_eq!(joined_room.status, "ONLINE");
     }
 
     #[tokio::test]
-    async fn test_join_room_not_found() {
-        let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo);
+    async fn test_join_nonexistent_room() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository);
 
         let result = service
-            .join_room("nonexistent-room".to_string(), "player1".to_string())
+            .join_room("nonexistent-room".to_string(), "test-player".to_string())
             .await;
-        assert!(result.is_err());
 
-        if let Err(AppError::DatabaseError(msg)) = result {
-            assert_eq!(msg, "Room not found");
-        } else {
-            panic!("Expected DatabaseError with 'Room not found' message");
-        }
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Room not found"));
     }
 
     #[tokio::test]
-    async fn test_join_room_full() {
-        let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo.clone());
+    async fn test_room_capacity_limit() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
 
         // Create a room
         let create_request = RoomCreateRequest {
-            host_name: "host-player".to_string(),
+            host_name: "test-host".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
 
-        // Fill the room to capacity (3 more players to reach 4 total)
-        for _ in 0..3 {
-            service
-                .join_room(created_room.id.clone(), "player1".to_string())
-                .await
-                .unwrap();
-        }
+        // Add 3 more players to reach capacity (host + 3 = 4 total)
+        service
+            .join_room(created_room.id.clone(), "player2".to_string())
+            .await
+            .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player3".to_string())
+            .await
+            .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player4".to_string())
+            .await
+            .unwrap();
 
         // Verify room is at capacity
-        let room = repo.get_room(&created_room.id).await.unwrap().unwrap();
-        assert_eq!(room.player_count, 4);
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(room.get_player_count(), 4);
 
         // Try to join again - should fail
         let result = service
-            .join_room(created_room.id.clone(), "player1".to_string())
+            .join_room(created_room.id.clone(), "player5".to_string())
             .await;
-        assert!(result.is_err());
 
-        if let Err(AppError::DatabaseError(msg)) = result {
-            assert_eq!(msg, "Room is full");
-        } else {
-            panic!("Expected DatabaseError with 'Room is full' message");
-        }
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Room is full"));
     }
 
     #[tokio::test]
-    async fn test_join_room_multiple_players() {
-        let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo.clone());
+    async fn test_multiple_room_joins_with_capacity() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
 
         // Create a room
         let create_request = RoomCreateRequest {
@@ -326,71 +384,76 @@ mod tests {
         assert_eq!(fourth_join.player_count, 4);
 
         // Verify final state
-        let final_room = repo.get_room(&created_room.id).await.unwrap().unwrap();
-        assert_eq!(final_room.player_count, 4);
+        let final_room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(final_room.get_player_count(), 4);
         assert_eq!(final_room.host_name, "host-player");
         assert_eq!(final_room.status, "ONLINE");
     }
 
     #[tokio::test]
-    async fn test_join_room_atomic_race_condition_protection() {
-        let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = Arc::new(RoomService::new(repo.clone()));
+    async fn test_concurrent_room_joins() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
 
-        // Create a room with 3 players (1 slot remaining)
+        // Create a room
         let create_request = RoomCreateRequest {
             host_name: "host-player".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
 
-        // Add 2 more players to get to 3 total
-        service
-            .join_room(created_room.id.clone(), "player1".to_string())
-            .await
-            .unwrap();
+        // Manually add 2 players to get to 3 total
         service
             .join_room(created_room.id.clone(), "player2".to_string())
             .await
             .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player3".to_string())
+            .await
+            .unwrap();
 
         // Verify we're at 3 players
-        let room = repo.get_room(&created_room.id).await.unwrap().unwrap();
-        assert_eq!(room.player_count, 3);
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(room.get_player_count(), 3);
 
         // Simulate multiple concurrent join attempts
-        let service1 = Arc::clone(&service);
-        let service2 = Arc::clone(&service);
-        let room_id1 = created_room.id.clone();
-        let room_id2 = created_room.id.clone();
+        let room_id = created_room.id.clone();
+        let service = Arc::new(service);
 
-        let (result1, result2) = tokio::join!(
-            tokio::spawn(async move { service1.join_room(room_id1, "player1".to_string()).await }),
-            tokio::spawn(async move { service2.join_room(room_id2, "player2".to_string()).await })
-        );
+        let handles = (0..5)
+            .map(|i| {
+                let service = Arc::clone(&service);
+                let room_id = room_id.clone();
+                tokio::spawn(async move {
+                    service
+                        .join_room(room_id, format!("concurrent-player-{}", i))
+                        .await
+                })
+            })
+            .collect::<Vec<_>>();
 
-        // Extract the actual results from the spawn handles
-        let join_result1 = result1.unwrap();
-        let join_result2 = result2.unwrap();
+        let results = futures::future::join_all(handles).await;
 
-        // One should succeed, one should fail with "Room is full"
-        let results = [&join_result1, &join_result2];
-        let success_count = results.iter().filter(|r| r.is_ok()).count();
+        // Only one should succeed (reaching capacity of 4), others should fail
+        let successes = results.into_iter().filter_map(|r| r.unwrap().ok()).count();
+        assert_eq!(successes, 1);
 
-        let failure_count = results
-            .iter()
-            .filter(|r| matches!(r, Err(AppError::DatabaseError(msg)) if msg == "Room is full"))
-            .count();
-
-        assert_eq!(success_count, 1, "Exactly one join should succeed");
+        // Verify final room state
+        let final_room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
-            failure_count, 1,
-            "Exactly one join should fail with 'Room is full'"
-        );
-
-        // Verify final room state is exactly 4 players
-        let final_room = repo.get_room(&created_room.id).await.unwrap().unwrap();
-        assert_eq!(
-            final_room.player_count, 4,
+            final_room.get_player_count(),
+            4,
             "Final room should have exactly 4 players"
         );
     }

@@ -5,5 +5,5 @@ pub use handlers::{create_room, join_room, list_rooms};
 mod handlers;
 pub mod models;
 pub mod repository;
-mod service;
+pub mod service;
 mod types;

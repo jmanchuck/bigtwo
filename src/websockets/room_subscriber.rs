@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{
     event::{RoomEvent, RoomEventError, RoomEventHandler},
@@ -59,14 +59,14 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     })?
                     .ok_or_else(|| RoomEventError::RoomNotFound(room_id.to_string()))?;
 
-                // TODO: Get actual player list from room
-                // For now, just notify about the joined player
+                // Create WebSocket message for player joined event
                 let ws_message = WebSocketMessage {
                     message_type: MessageType::PlayersList,
                     payload: serde_json::json!({
                         "type": "player_joined",
                         "player": player,
-                        "player_count": room.player_count
+                        "player_count": room.get_player_count(),
+                        "players": room.players
                     }),
                     meta: None,
                 };
@@ -75,20 +75,66 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     RoomEventError::HandlerError(format!("Failed to serialize message: {}", e))
                 })?;
 
-                // TODO: Send to all players in room
-                // For now, we need room model to track actual player names
-                // This is where we'd get room.get_player_names() and iterate
+                // Send to all players in the room
+                for player_name in &room.players {
+                    self.connection_manager
+                        .send_to_player(player_name, &message_json)
+                        .await;
+                }
 
                 debug!(
                     room_id = %room_id,
+                    players_notified = room.players.len(),
                     message = %message_json,
-                    "Converted room event to WebSocket message"
+                    "Player joined notification sent to all room players"
                 );
 
-                // Placeholder: Would send to all players when we have player list
-                // for player_name in room.get_player_names() {
-                //     self.connection_manager.send_to_player(&player_name, &message_json).await;
-                // }
+                Ok(())
+            }
+            RoomEvent::PlayerLeft { player } => {
+                // Query current room state for accurate player list
+                let room = self.room_repository.get_room(room_id).await.map_err(|e| {
+                    RoomEventError::HandlerError(format!("Failed to get room: {}", e))
+                })?;
+
+                // If room was deleted (no players left), no need to notify anyone
+                let room = match room {
+                    Some(room) => room,
+                    None => {
+                        debug!(room_id = %room_id, "Room was deleted, no notifications needed");
+                        return Ok(());
+                    }
+                };
+
+                // Create WebSocket message for player left event
+                let ws_message = WebSocketMessage {
+                    message_type: MessageType::PlayersList,
+                    payload: serde_json::json!({
+                        "type": "player_left",
+                        "player": player,
+                        "player_count": room.get_player_count(),
+                        "players": room.players
+                    }),
+                    meta: None,
+                };
+
+                let message_json = serde_json::to_string(&ws_message).map_err(|e| {
+                    RoomEventError::HandlerError(format!("Failed to serialize message: {}", e))
+                })?;
+
+                // Send to all remaining players in the room
+                for player_name in &room.players {
+                    self.connection_manager
+                        .send_to_player(player_name, &message_json)
+                        .await;
+                }
+
+                debug!(
+                    room_id = %room_id,
+                    players_notified = room.players.len(),
+                    message = %message_json,
+                    "Player left notification sent to all remaining room players"
+                );
 
                 Ok(())
             }

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::event::EventBus;
+use crate::room::models::RoomModel;
 use crate::room::repository::RoomRepository;
 use crate::session::repository::SessionRepository;
 use crate::websockets::ConnectionManager;
@@ -129,12 +130,21 @@ pub mod test_utils {
         ) -> Result<crate::room::repository::JoinRoomResult, AppError> {
             Ok(crate::room::repository::JoinRoomResult::Success(
                 RoomModel {
-                    id: _room_id.to_string(),
-                    host_name: _player_name.to_string(),
+                    id: "dummy-room".to_string(),
+                    host_name: "dummy-host".to_string(),
                     status: "ONLINE".to_string(),
-                    player_count: 1,
+                    players: vec!["dummy-host".to_string()], // Host is first player
                 },
             ))
+        }
+
+        async fn leave_room(
+            &self,
+            _room_id: &str,
+            _player_name: &str,
+        ) -> Result<crate::room::repository::LeaveRoomResult, AppError> {
+            // Always return success for dummy implementation
+            Ok(crate::room::repository::LeaveRoomResult::PlayerNotInRoom)
         }
     }
 

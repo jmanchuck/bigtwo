@@ -17,6 +17,19 @@ pub enum JoinRoomResult {
     RoomNotFound,
 }
 
+/// Result of attempting to leave a room
+#[derive(Debug, Clone)]
+pub enum LeaveRoomResult {
+    /// Successfully left the room, returns updated room data
+    Success(RoomModel),
+    /// Player was not in the room
+    PlayerNotInRoom,
+    /// Room does not exist
+    RoomNotFound,
+    /// Room was deleted because no players left
+    RoomDeleted,
+}
+
 /// Trait for room repository operations
 #[async_trait]
 pub trait RoomRepository {
@@ -31,6 +44,13 @@ pub trait RoomRepository {
         room_id: &str,
         player_name: &str,
     ) -> Result<JoinRoomResult, AppError>;
+
+    /// Atomically attempts to remove a player from a room
+    async fn leave_room(
+        &self,
+        room_id: &str,
+        player_name: &str,
+    ) -> Result<LeaveRoomResult, AppError>;
 }
 
 /// In-memory implementation of RoomRepository for development and testing
@@ -112,13 +132,19 @@ impl RoomRepository for InMemoryRoomRepository {
         };
 
         // Check if room is at capacity
-        if room.player_count >= 4 {
-            debug!(room_id = %room_id, current_count = room.player_count, "Room is full");
+        if room.is_full() {
+            debug!(room_id = %room_id, current_count = room.get_player_count(), "Room is full");
             return Ok(JoinRoomResult::RoomFull);
         }
 
-        // Atomically increment the player count
-        room.player_count += 1;
+        // Check if player is already in room (prevent duplicates)
+        if room.has_player(player_name) {
+            debug!(room_id = %room_id, player_name = %player_name, "Player already in room");
+            return Ok(JoinRoomResult::Success(room.clone()));
+        }
+
+        // Add player to the room
+        room.players.push(player_name.to_string());
 
         // Clone the updated room data to return
         let updated_room = room.clone();
@@ -126,11 +152,59 @@ impl RoomRepository for InMemoryRoomRepository {
         info!(
             room_id = %room_id,
             player_name = %player_name,
-            new_player_count = updated_room.player_count,
+            new_player_count = updated_room.get_player_count(),
             "Player joined room successfully (atomic)"
         );
 
         Ok(JoinRoomResult::Success(updated_room))
+    }
+
+    #[instrument(skip(self))]
+    async fn leave_room(
+        &self,
+        room_id: &str,
+        player_name: &str,
+    ) -> Result<LeaveRoomResult, AppError> {
+        debug!(room_id = %room_id, player_name = %player_name, "Attempting to leave room atomically");
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        // Get the room or return RoomNotFound
+        let room = match rooms.get_mut(room_id) {
+            Some(room) => room,
+            None => {
+                debug!(room_id = %room_id, "Room not found");
+                return Ok(LeaveRoomResult::RoomNotFound);
+            }
+        };
+
+        // Check if player is in the room
+        if !room.has_player(player_name) {
+            debug!(room_id = %room_id, player_name = %player_name, "Player not in room");
+            return Ok(LeaveRoomResult::PlayerNotInRoom);
+        }
+
+        // Remove player from the room
+        room.players.retain(|p| p != player_name);
+
+        // If room is now empty, delete it
+        if room.players.is_empty() {
+            debug!(room_id = %room_id, "Room is now empty, deleting");
+            rooms.remove(room_id);
+            return Ok(LeaveRoomResult::RoomDeleted);
+        }
+
+        // Clone the updated room data to return
+        let updated_room = room.clone();
+
+        info!(
+            room_id = %room_id,
+            player_name = %player_name,
+            new_player_count = updated_room.get_player_count(),
+            "Player left room successfully (atomic)"
+        );
+
+        Ok(LeaveRoomResult::Success(updated_room))
     }
 }
 
@@ -148,7 +222,7 @@ mod tests {
                 id: room_id.to_string(),
                 host_name: host_name.to_string(),
                 status: "ONLINE".to_string(),
-                player_count: 1,
+                players: vec![host_name.to_string()], // Host is first player
             }
         }
     }
@@ -170,7 +244,7 @@ mod tests {
         assert_eq!(retrieved_room.id, room.id);
         assert_eq!(retrieved_room.host_name, room.host_name);
         assert_eq!(retrieved_room.status, "ONLINE");
-        assert_eq!(retrieved_room.player_count, 1);
+        assert_eq!(retrieved_room.get_player_count(), 1);
     }
 
     #[tokio::test]
