@@ -1,14 +1,15 @@
 use async_trait::async_trait;
 use axum::{
-    extract::{Extension, Path, State, WebSocketUpgrade},
+    extract::{Path, Query, State, WebSocketUpgrade},
     response::Response,
 };
+use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::room::{repository::LeaveRoomResult, service::RoomService};
-use crate::{session::SessionClaims, shared::AppState};
+use crate::shared::{AppError, AppState};
 
 use super::socket::{Connection, MessageHandler};
 
@@ -34,22 +35,53 @@ impl MessageHandler for DefaultMessageHandler {
     }
 }
 
-/// Minimal WebSocket upgrade endpoint
+#[derive(Deserialize)]
+pub struct WebSocketQuery {
+    token: String,
+    player: String,
+}
+
+/// WebSocket endpoint that handles authentication via query parameters
+/// GET /ws/{room_id}?token=jwt_token&player=username
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     Path(room_id): Path<String>,
+    Query(query): Query<WebSocketQuery>,
     State(app_state): State<AppState>,
-    Extension(claims): Extension<SessionClaims>,
-) -> Response {
-    let username = claims.username.clone();
+) -> Result<Response, AppError> {
+    info!(
+        room_id = %room_id,
+        username = %query.player,
+        "WebSocket connection requested"
+    );
+
+    // TODO: Validate JWT token properly when SessionService is public
+    // For now, just check that token is not empty
+    if query.token.is_empty() {
+        warn!("Empty token in WebSocket request");
+        return Err(AppError::Unauthorized("Invalid token".to_string()));
+    }
+
+    // Verify room exists using repository
+    let room_option = app_state.room_repository.get_room(&room_id).await?;
+    if room_option.is_none() {
+        warn!(
+            room_id = %room_id,
+            "Room not found, rejecting WebSocket connection"
+        );
+        return Err(AppError::NotFound("Room not found".to_string()));
+    }
 
     info!(
         room_id = %room_id,
-        username = %username,
-        "WebSocket upgrade requested"
+        username = %query.player,
+        "Room verified, establishing WebSocket connection"
     );
 
-    ws.on_upgrade(move |socket| handle_websocket_connection(socket, room_id, username, app_state))
+    let username = query.player.clone();
+    Ok(ws.on_upgrade(move |socket| {
+        handle_websocket_connection(socket, room_id, username, app_state)
+    }))
 }
 
 /// Handle the upgraded WebSocket connection
@@ -71,8 +103,22 @@ async fn handle_websocket_connection(
     // Register connection with the connection manager
     app_state
         .connection_manager
-        .add_connection(username.clone(), outbound_sender)
+        .add_connection(username.clone(), outbound_sender.clone())
         .await;
+
+    // Send initial room state to the newly connected player
+    if let Ok(Some(room)) = app_state.room_repository.get_room(&room_id).await {
+        let initial_message =
+            crate::websockets::messages::WebSocketMessage::players_list(room.players);
+        if let Ok(message_json) = serde_json::to_string(&initial_message) {
+            let _ = outbound_sender.send(message_json);
+            debug!(
+                room_id = %room_id,
+                username = %username,
+                "Sent initial PLAYERS_LIST to newly connected player"
+            );
+        }
+    }
 
     // Wrap the axum WebSocket in our simple interface
     let socket_wrapper = Box::new(socket);
@@ -116,7 +162,6 @@ async fn handle_websocket_connection(
 
     // Remove player from room in database
     let room_service = RoomService::new(Arc::clone(&app_state.room_repository));
-
     match room_service
         .leave_room(room_id.clone(), username.clone())
         .await
@@ -136,14 +181,14 @@ async fn handle_websocket_connection(
             info!(
                 room_id = %room_id,
                 username = %username,
-                "Player left room via WebSocket disconnect"
+                "Player left room on WebSocket disconnect"
             );
         }
         Ok(LeaveRoomResult::RoomDeleted) => {
             info!(
                 room_id = %room_id,
                 username = %username,
-                "Room deleted - last player disconnected"
+                "Room deleted after last player left on WebSocket disconnect"
             );
         }
         Ok(LeaveRoomResult::PlayerNotInRoom) => {
@@ -165,7 +210,7 @@ async fn handle_websocket_connection(
                 room_id = %room_id,
                 username = %username,
                 error = ?e,
-                "Failed to remove player from room during disconnect"
+                "Error leaving room on WebSocket disconnect"
             );
         }
     }

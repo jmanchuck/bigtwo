@@ -18,9 +18,7 @@ use room::repository::InMemoryRoomRepository;
 use session::repository::InMemorySessionRepository;
 // use session::repository::PostgresSessionRepository; // For production
 use shared::AppState;
-use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
-use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -84,6 +82,7 @@ async fn main() {
                 session::jwt_auth,
             )),
         )
+        .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);

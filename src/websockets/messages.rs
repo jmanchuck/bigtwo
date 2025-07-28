@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Message types for WebSocket communication
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     // Client -> Server
     Chat,

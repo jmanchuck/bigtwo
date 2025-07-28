@@ -1,10 +1,9 @@
 use axum::{
-    extract::{Path, State, WebSocketUpgrade},
-    response::{IntoResponse, Response},
+    extract::{Path, State},
     Extension, Json,
 };
 use std::sync::Arc;
-use tracing::{debug, info, instrument, warn};
+use tracing::{info, instrument};
 
 use super::{
     service::RoomService,
@@ -14,7 +13,7 @@ use crate::{
     event::{RoomEvent, RoomSubscription},
     session::SessionClaims,
     shared::{AppError, AppState},
-    websockets::{room_subscriber::WebSocketRoomSubscriber, Connection, DefaultMessageHandler},
+    websockets::room_subscriber::WebSocketRoomSubscriber,
 };
 
 /// HTTP handler for creating a new room
@@ -76,39 +75,34 @@ pub async fn list_rooms(
     Ok(Json(rooms))
 }
 
-/// HTTP handler for joining a room with optional WebSocket upgrade
+/// HTTP handler for joining a room
 ///
 /// POST /room/{room_id}/join
 ///
-/// Supports two modes:
-/// 1. HTTP: Returns JSON response with room info
-/// 2. WebSocket: Upgrades connection + returns room info via WebSocket
-///
+/// Joins a player to a room and returns room information.
 /// Requires valid session (X-Session-ID header)
 #[instrument(name = "join_room", skip(state))]
 pub async fn join_room(
-    ws: Option<WebSocketUpgrade>,
     State(state): State<AppState>,
     Path(room_id): Path<String>,
     Extension(claims): Extension<SessionClaims>,
     Json(_request): Json<JoinRoomRequest>,
-) -> Result<Response, AppError> {
+) -> Result<Json<RoomResponse>, AppError> {
     info!(
         room_id = %room_id,
         username = %claims.username,
         session_id = %claims.session_id,
-        websocket_requested = ws.is_some(),
         "Player joining room"
     );
 
     let service = RoomService::new(Arc::clone(&state.room_repository));
 
-    // 1. Join the room (business logic)
+    // Join the room (business logic)
     let room = service
         .join_room(room_id.clone(), claims.username.clone())
         .await?;
 
-    // 2. Emit room-specific event directly to room subscribers
+    // Emit room-specific event directly to room subscribers
     state
         .event_bus
         .emit_to_room(
@@ -126,153 +120,8 @@ pub async fn join_room(
         "Player joined room successfully"
     );
 
-    // 3. Return response based on client request type
-    match ws {
-        Some(websocket_upgrade) => {
-            // Client wants WebSocket connection
-            info!(
-                room_id = %room_id,
-                username = %claims.username,
-                "Upgrading to WebSocket connection"
-            );
-
-            let response = websocket_upgrade.on_upgrade(move |socket| {
-                handle_websocket_connection(socket, room_id, claims.username, state)
-            });
-
-            Ok(response)
-        }
-        None => {
-            // Client wants HTTP JSON response
-            Ok(Json(room).into_response())
-        }
-    }
-}
-
-/// Handle the upgraded WebSocket connection after room join
-async fn handle_websocket_connection(
-    socket: axum::extract::ws::WebSocket,
-    room_id: String,
-    username: String,
-    app_state: AppState,
-) {
-    use tokio::sync::mpsc;
-    use tracing::{info, warn};
-
-    info!(
-        room_id = %room_id,
-        username = %username,
-        "WebSocket connection established after room join"
-    );
-
-    // Create the outbound channel (app -> client)
-    let (outbound_sender, outbound_receiver) = mpsc::unbounded_channel::<String>();
-
-    // Register connection with the connection manager
-    app_state
-        .connection_manager
-        .add_connection(username.clone(), outbound_sender)
-        .await;
-
-    // Create message handler (using default for now)
-    let message_handler = Arc::new(DefaultMessageHandler);
-
-    // Create and run the connection
-    let connection = Connection::new(
-        username.clone(),
-        room_id.clone(),
-        Box::new(socket),
-        outbound_receiver,
-        message_handler,
-    );
-
-    // Run the connection until disconnect
-    match connection.run().await {
-        Ok(()) => {
-            info!(
-                room_id = %room_id,
-                username = %username,
-                "WebSocket connection closed cleanly"
-            );
-        }
-        Err(e) => {
-            warn!(
-                room_id = %room_id,
-                username = %username,
-                error = ?e,
-                "WebSocket connection error"
-            );
-        }
-    }
-
-    // Cleanup: remove from connection manager and leave the room
-    app_state
-        .connection_manager
-        .remove_connection(&username)
-        .await;
-
-    // Remove player from room in database
-    use crate::room::{repository::LeaveRoomResult, service::RoomService};
-    let room_service = RoomService::new(Arc::clone(&app_state.room_repository));
-
-    match room_service
-        .leave_room(room_id.clone(), username.clone())
-        .await
-    {
-        Ok(LeaveRoomResult::Success(_)) => {
-            // Emit PlayerLeft event to notify other players
-            app_state
-                .event_bus
-                .emit_to_room(
-                    &room_id,
-                    crate::event::RoomEvent::PlayerLeft {
-                        player: username.clone(),
-                    },
-                )
-                .await;
-
-            info!(
-                room_id = %room_id,
-                username = %username,
-                "Player left room via WebSocket disconnect"
-            );
-        }
-        Ok(LeaveRoomResult::RoomDeleted) => {
-            info!(
-                room_id = %room_id,
-                username = %username,
-                "Room deleted - last player disconnected"
-            );
-        }
-        Ok(LeaveRoomResult::PlayerNotInRoom) => {
-            debug!(
-                room_id = %room_id,
-                username = %username,
-                "Player was not in room during disconnect cleanup"
-            );
-        }
-        Ok(LeaveRoomResult::RoomNotFound) => {
-            debug!(
-                room_id = %room_id,
-                username = %username,
-                "Room not found during disconnect cleanup"
-            );
-        }
-        Err(e) => {
-            warn!(
-                room_id = %room_id,
-                username = %username,
-                error = ?e,
-                "Failed to remove player from room during disconnect"
-            );
-        }
-    }
-
-    info!(
-        room_id = %room_id,
-        username = %username,
-        "WebSocket cleanup completed"
-    );
+    // Always return JSON response with room information
+    Ok(Json(room))
 }
 
 #[cfg(test)]

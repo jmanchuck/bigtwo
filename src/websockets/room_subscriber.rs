@@ -59,17 +59,8 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     })?
                     .ok_or_else(|| RoomEventError::RoomNotFound(room_id.to_string()))?;
 
-                // Create WebSocket message for player joined event
-                let ws_message = WebSocketMessage {
-                    message_type: MessageType::PlayersList,
-                    payload: serde_json::json!({
-                        "type": "player_joined",
-                        "player": player,
-                        "player_count": room.get_player_count(),
-                        "players": room.players
-                    }),
-                    meta: None,
-                };
+                // Create WebSocket message for players list using the correct helper function
+                let ws_message = WebSocketMessage::players_list(room.players.clone());
 
                 let message_json = serde_json::to_string(&ws_message).map_err(|e| {
                     RoomEventError::HandlerError(format!("Failed to serialize message: {}", e))
@@ -106,17 +97,8 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     }
                 };
 
-                // Create WebSocket message for player left event
-                let ws_message = WebSocketMessage {
-                    message_type: MessageType::PlayersList,
-                    payload: serde_json::json!({
-                        "type": "player_left",
-                        "player": player,
-                        "player_count": room.get_player_count(),
-                        "players": room.players
-                    }),
-                    meta: None,
-                };
+                // Create WebSocket message for players list using the correct helper function
+                let ws_message = WebSocketMessage::players_list(room.players.clone());
 
                 let message_json = serde_json::to_string(&ws_message).map_err(|e| {
                     RoomEventError::HandlerError(format!("Failed to serialize message: {}", e))
