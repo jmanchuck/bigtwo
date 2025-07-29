@@ -18,7 +18,10 @@ pub async fn jwt_auth(
     mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
-    debug!("JWT authentication middleware triggered");
+    info!(
+        "JWT authentication middleware triggered for request {}",
+        req.uri()
+    );
 
     // Use injected repository from app state
     let service = SessionService::new(Arc::clone(&state.session_repository));
@@ -33,10 +36,16 @@ pub async fn jwt_auth(
             AppError::Unauthorized("Missing session token".to_string())
         })?;
 
-    debug!("Extracted token from X-Session-ID header");
+    info!("Extracted token from X-Session-ID header");
 
-    // Validate token
-    let claims = service.validate_session(token).await?;
+    // Validate token, log error if it fails
+    let claims = match service.validate_session(token).await {
+        Ok(claims) => claims,
+        Err(e) => {
+            warn!("JWT authentication failed: {}", e);
+            return Err(e);
+        }
+    };
 
     info!(
         username = %claims.username,
