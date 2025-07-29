@@ -61,7 +61,7 @@ impl Game {
             return Err(GameError::InvalidPlayedCards);
         }
 
-        if cards.len() == 0 {
+        if cards.is_empty() {
             if self.consecutive_passes >= 3 {
                 return Err(GameError::CannotPass);
             }

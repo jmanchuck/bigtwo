@@ -91,9 +91,7 @@ impl Connection {
                 msg = self.outbound_receiver.recv() => {
                     match msg {
                         Some(message) => {
-                            if let Err(e) = self.socket.send_message(message).await {
-                                return Err(e);
-                            }
+                            self.socket.send_message(message).await?
                         }
                         None => break, // Channel closed, disconnect
                     }

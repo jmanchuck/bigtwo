@@ -8,7 +8,6 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::event::EventBus;
-use crate::room::models::RoomModel;
 use crate::room::repository::RoomRepository;
 use crate::session::repository::SessionRepository;
 use crate::websockets::ConnectionManager;

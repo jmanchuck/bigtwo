@@ -5,10 +5,7 @@ use tracing::debug;
 use crate::{
     event::{RoomEvent, RoomEventError, RoomEventHandler},
     room::repository::RoomRepository,
-    websockets::{
-        connection_manager::ConnectionManager,
-        messages::{MessageType, WebSocketMessage},
-    },
+    websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
 /// WebSocket-specific room event handler

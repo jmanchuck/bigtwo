@@ -178,7 +178,7 @@ impl TripleHand {
             return Err(HandError::InvalidHandType);
         }
 
-        let high_card = [card1, card2, card3].iter().max().unwrap().clone();
+        let high_card = *[card1, card2, card3].iter().max().unwrap();
         Ok(Self {
             rank: card1.rank,
             high_card,
@@ -389,12 +389,12 @@ pub enum FiveCardHand {
 }
 
 impl FiveCardHand {
-    pub fn new(cards: &Vec<Card>) -> Result<Self, HandError> {
+    pub fn new(cards: &[Card]) -> Result<Self, HandError> {
         if cards.len() != 5 {
             return Err(HandError::InvalidHandSize);
         }
 
-        let mut cards = cards.clone();
+        let mut cards = cards.to_owned();
         cards.sort();
         Self::classify_hand(cards)
     }

@@ -47,7 +47,7 @@ impl EventBus {
             room_channels.insert(room_id.to_string(), sender.clone());
 
             // Try to send again
-            if let Err(_) = sender.send(event) {
+            if sender.send(event).is_err() {
                 debug!(room_id = %room_id, "Room event sent to new channel with no receivers");
             }
         }

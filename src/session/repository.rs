@@ -164,9 +164,9 @@ impl SessionRepository for PostgresSessionRepository {
         )
         .bind(&session.id)
         .bind(&session.username)
-        .bind(&session.created_at)
-        .bind(&session.expires_at)
-        .bind(&session.last_accessed)
+        .bind(session.created_at)
+        .bind(session.expires_at)
+        .bind(session.last_accessed)
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -223,8 +223,8 @@ impl SessionRepository for PostgresSessionRepository {
         )
         .bind(&session.id)
         .bind(&session.username)
-        .bind(&session.expires_at)
-        .bind(&session.last_accessed)
+        .bind(session.expires_at)
+        .bind(session.last_accessed)
         .execute(&self.pool)
         .await
         .map_err(|e| {

@@ -1,9 +1,9 @@
-use axum::{extract::State, http::StatusCode, response::Json, Extension};
+use axum::{extract::State, response::Json, Extension};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{info, instrument};
 
-use super::{repository::SessionRepository, service::SessionService, types::SessionClaims};
+use super::{service::SessionService, types::SessionClaims};
 use crate::shared::{AppError, AppState};
 
 /// Creates a new user session

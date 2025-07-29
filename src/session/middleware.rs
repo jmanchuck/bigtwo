@@ -6,7 +6,7 @@ use axum::{
 use std::sync::Arc;
 use tracing::{debug, info, instrument, warn};
 
-use super::{repository::SessionRepository, service::SessionService};
+use super::service::SessionService;
 use crate::shared::{AppError, AppState};
 
 /// JWT authentication middleware - validates X-Session-ID header and adds SessionClaims to request.
