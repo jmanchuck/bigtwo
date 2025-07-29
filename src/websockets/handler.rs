@@ -8,10 +8,79 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
-use crate::room::{repository::LeaveRoomResult, service::RoomService};
+use crate::event::EventBus;
 use crate::shared::{AppError, AppState};
+use crate::websockets::messages::{MessageType, WebSocketMessage};
 
 use super::socket::{Connection, MessageHandler};
+
+/// Message handler for receiving WebSocket messages from the client
+pub struct WebsocketReceiveHandler {
+    event_bus: EventBus,
+}
+
+impl WebsocketReceiveHandler {
+    pub fn new(event_bus: EventBus) -> Self {
+        Self { event_bus }
+    }
+}
+
+#[async_trait]
+impl MessageHandler for WebsocketReceiveHandler {
+    async fn handle_message(&self, username: &str, room_id: &str, message: String) {
+        info!(
+            username = %username,
+            room_id = %room_id,
+            message = %message,
+            "Received message"
+        );
+
+        // Parse message and emit appropriate event
+        match serde_json::from_str::<WebSocketMessage>(&message) {
+            Ok(ws_message) => match ws_message.message_type {
+                MessageType::Chat => {
+                    if let Some(content) =
+                        ws_message.payload.get("content").and_then(|v| v.as_str())
+                    {
+                        self.event_bus
+                            .emit_to_room(
+                                room_id,
+                                crate::event::RoomEvent::ChatMessage {
+                                    sender: username.to_string(),
+                                    content: content.to_string(),
+                                },
+                            )
+                            .await;
+                    }
+                }
+                MessageType::Leave => {
+                    self.event_bus
+                        .emit_to_room(
+                            room_id,
+                            crate::event::RoomEvent::PlayerLeaveRequested {
+                                player: username.to_string(),
+                            },
+                        )
+                        .await;
+                }
+                _ => {
+                    debug!(
+                        message_type = ?ws_message.message_type,
+                        "Unhandled message type"
+                    );
+                }
+            },
+            Err(e) => {
+                warn!(
+                    username = %username,
+                    room_id = %room_id,
+                    error = %e,
+                    "Failed to parse WebSocket message"
+                );
+            }
+        }
+    }
+}
 
 /// Default message handler that just logs incoming messages
 pub struct DefaultMessageHandler;
@@ -123,8 +192,8 @@ async fn handle_websocket_connection(
     // Wrap the axum WebSocket in our simple interface
     let socket_wrapper = Box::new(socket);
 
-    // Create message handler (using default for now)
-    let message_handler = Arc::new(DefaultMessageHandler);
+    // Create message handler (using the new GameRoomMessageHandler)
+    let message_handler = Arc::new(WebsocketReceiveHandler::new(app_state.event_bus.clone()));
 
     // Create and run the connection
     let connection = Connection::new(
@@ -154,70 +223,26 @@ async fn handle_websocket_connection(
         }
     }
 
-    // Cleanup: remove from connection manager and leave the room
+    // Cleanup: remove from connection manager and emit disconnect event
     app_state
         .connection_manager
         .remove_connection(&username)
         .await;
 
-    // Remove player from room in database
-    let room_service = RoomService::new(Arc::clone(&app_state.room_repository));
-    match room_service
-        .leave_room(room_id.clone(), username.clone())
-        .await
-    {
-        Ok(LeaveRoomResult::Success(_)) => {
-            // Emit PlayerLeft event to notify other players
-            app_state
-                .event_bus
-                .emit_to_room(
-                    &room_id,
-                    crate::event::RoomEvent::PlayerLeft {
-                        player: username.clone(),
-                    },
-                )
-                .await;
-
-            info!(
-                room_id = %room_id,
-                username = %username,
-                "Player left room on WebSocket disconnect"
-            );
-        }
-        Ok(LeaveRoomResult::RoomDeleted) => {
-            info!(
-                room_id = %room_id,
-                username = %username,
-                "Room deleted after last player left on WebSocket disconnect"
-            );
-        }
-        Ok(LeaveRoomResult::PlayerNotInRoom) => {
-            debug!(
-                room_id = %room_id,
-                username = %username,
-                "Player was not in room during disconnect cleanup"
-            );
-        }
-        Ok(LeaveRoomResult::RoomNotFound) => {
-            debug!(
-                room_id = %room_id,
-                username = %username,
-                "Room not found during disconnect cleanup"
-            );
-        }
-        Err(e) => {
-            warn!(
-                room_id = %room_id,
-                username = %username,
-                error = ?e,
-                "Error leaving room on WebSocket disconnect"
-            );
-        }
-    }
+    // Emit disconnect event - let the event system handle the rest
+    app_state
+        .event_bus
+        .emit_to_room(
+            &room_id,
+            crate::event::RoomEvent::PlayerDisconnected {
+                player: username.clone(),
+            },
+        )
+        .await;
 
     info!(
         room_id = %room_id,
         username = %username,
-        "WebSocket cleanup completed"
+        "WebSocket disconnect event emitted"
     );
 }

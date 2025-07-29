@@ -39,12 +39,18 @@ pub struct WebSocketMessage {
 /// Client-to-Server message payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatPayload {
+    pub sender: String,
     pub content: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MovePayload {
     pub cards: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeavePayload {
+    pub player: String,
 }
 
 /// Server-to-Client message payloads
@@ -127,5 +133,17 @@ impl WebSocketMessage {
             MessageType::GameStarted,
             serde_json::to_value(payload).unwrap(),
         )
+    }
+
+    /// Create a CHAT message
+    pub fn chat(sender: String, content: String) -> Self {
+        let payload = ChatPayload { sender, content };
+        Self::new(MessageType::Chat, serde_json::to_value(payload).unwrap())
+    }
+
+    /// Create a LEAVE message
+    pub fn leave(player: String) -> Self {
+        let payload = LeavePayload { player };
+        Self::new(MessageType::Leave, serde_json::to_value(payload).unwrap())
     }
 }

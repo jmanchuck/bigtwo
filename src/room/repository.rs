@@ -165,7 +165,7 @@ impl RoomRepository for InMemoryRoomRepository {
         room_id: &str,
         player_name: &str,
     ) -> Result<LeaveRoomResult, AppError> {
-        debug!(room_id = %room_id, player_name = %player_name, "Attempting to leave room atomically");
+        info!(room_id = %room_id, player_name = %player_name, "Attempting to leave room atomically");
 
         let mut rooms = self.rooms.lock().unwrap();
 
@@ -173,14 +173,14 @@ impl RoomRepository for InMemoryRoomRepository {
         let room = match rooms.get_mut(room_id) {
             Some(room) => room,
             None => {
-                debug!(room_id = %room_id, "Room not found");
+                info!(room_id = %room_id, "Room not found");
                 return Ok(LeaveRoomResult::RoomNotFound);
             }
         };
 
         // Check if player is in the room
         if !room.has_player(player_name) {
-            debug!(room_id = %room_id, player_name = %player_name, "Player not in room");
+            info!(room_id = %room_id, player_name = %player_name, "Player not in room");
             return Ok(LeaveRoomResult::PlayerNotInRoom);
         }
 
@@ -189,9 +189,22 @@ impl RoomRepository for InMemoryRoomRepository {
 
         // If room is now empty, delete it
         if room.players.is_empty() {
-            debug!(room_id = %room_id, "Room is now empty, deleting");
+            info!(room_id = %room_id, "Room is now empty, deleting");
             rooms.remove(room_id);
             return Ok(LeaveRoomResult::RoomDeleted);
+        }
+
+        // If the leaving player was the host, assign new host to first remaining player
+        if room.host_name == player_name {
+            if let Some(new_host) = room.players.first().cloned() {
+                info!(
+                    room_id = %room_id,
+                    old_host = %player_name,
+                    new_host = %new_host,
+                    "Host left, assigning new host"
+                );
+                room.host_name = new_host;
+            }
         }
 
         // Clone the updated room data to return
@@ -201,6 +214,7 @@ impl RoomRepository for InMemoryRoomRepository {
             room_id = %room_id,
             player_name = %player_name,
             new_player_count = updated_room.get_player_count(),
+            current_host = %updated_room.host_name,
             "Player left room successfully (atomic)"
         );
 

@@ -35,14 +35,14 @@ impl RoomSubscription {
         let mut receiver = self.event_bus.subscribe_to_room(&room_id).await;
 
         tokio::spawn(async move {
-            debug!(
+            info!(
                 room_id = %room_id,
                 handler = handler_name,
                 "Room subscription task started"
             );
 
             while let Ok(event) = receiver.recv().await {
-                debug!(
+                info!(
                     room_id = %room_id,
                     handler = handler_name,
                     event = ?event,
@@ -50,7 +50,7 @@ impl RoomSubscription {
                 );
 
                 if let Err(e) = self.handler.handle_room_event(&room_id, event).await {
-                    error!(
+                    info!(
                         room_id = %room_id,
                         handler = handler_name,
                         error = %e,

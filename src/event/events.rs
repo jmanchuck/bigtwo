@@ -7,4 +7,14 @@ pub enum RoomEvent {
     PlayerJoined { player: String },
     /// A player left this room
     PlayerLeft { player: String },
+    /// The host of this room changed
+    HostChanged { old_host: String, new_host: String },
+    /// A chat message was sent in this room
+    ChatMessage { sender: String, content: String },
+    /// A player explicitly requested to leave (different from disconnect)
+    PlayerLeaveRequested { player: String },
+    /// WebSocket connection was established for a player
+    PlayerConnected { player: String },
+    /// WebSocket connection was lost for a player  
+    PlayerDisconnected { player: String },
 }

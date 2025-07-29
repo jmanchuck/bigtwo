@@ -58,6 +58,8 @@ impl SocketWrapper for WebSocket {
 }
 
 /// Connection represents a managed WebSocket connection
+/// It is used to send and receive messages to and from the client
+/// The outbound receiver is a channel that receives messages from the ConnectionManager's outbound sender
 pub struct Connection {
     pub username: String,
     pub room_id: String,

@@ -3,6 +3,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
+/// Maps player to their outbound channel
+/// Used by upstream components to send messages to players
+/// The sender is a channel that directs into the Connection struct
+/// The owned sender is called the outbound sender
 #[async_trait]
 pub trait ConnectionManager: Send + Sync {
     async fn add_connection(&self, username: String, sender: mpsc::UnboundedSender<String>);
