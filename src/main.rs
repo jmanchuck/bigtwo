@@ -105,6 +105,7 @@ async fn main() {
                 session::jwt_auth,
             )),
         )
+        .route("/room/:room_id", get(room::get_room_details))
         .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

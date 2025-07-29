@@ -48,6 +48,22 @@ impl RoomService {
         Ok(room_response)
     }
 
+    #[instrument(skip(self))]
+    pub async fn get_room_details(&self, room_id: String) -> Result<RoomResponse, AppError> {
+        let room = self
+            .repository
+            .get_room(&room_id)
+            .await?
+            .ok_or(AppError::DatabaseError("Room not found".to_string()))?;
+
+        Ok(RoomResponse {
+            id: room.id.clone(),
+            host_name: room.host_name.clone(),
+            status: room.status.clone(),
+            player_count: room.get_player_count(),
+        })
+    }
+
     /// Lists all available rooms
     #[instrument(skip(self))]
     pub async fn list_rooms(&self) -> Result<Vec<RoomResponse>, AppError> {
@@ -79,7 +95,7 @@ impl RoomService {
         room_id: String,
         player_name: String,
     ) -> Result<RoomResponse, AppError> {
-        debug!(room_id = %room_id, player_name = %player_name, "Attempting to join room");
+        info!(room_id = %room_id, player_name = %player_name, "Attempting to join room");
 
         // Use the atomic try_join_room method
         let result = self

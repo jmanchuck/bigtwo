@@ -51,7 +51,7 @@ impl SessionService {
     /// Validates a session token and returns the claims if valid
     #[instrument(skip(self, token))]
     pub async fn validate_session(&self, token: &str) -> Result<SessionClaims, AppError> {
-        info!("Validating session token");
+        info!(token = %token, "Validating session token");
 
         // First validate JWT token structure and signature
         let claims = self.token_config.validate_token(token)?;

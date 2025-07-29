@@ -124,6 +124,17 @@ pub async fn join_room(
     Ok(Json(room))
 }
 
+pub async fn get_room_details(
+    State(state): State<AppState>,
+    Path(room_id): Path<String>,
+) -> Result<Json<RoomResponse>, AppError> {
+    // Get room without requiring auth - just returns room info
+    let service = RoomService::new(Arc::clone(&state.room_repository));
+    let room = service.get_room_details(room_id.clone()).await?;
+
+    Ok(Json(room))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,7 +19,7 @@ impl RoomModel {
             id: room_id,
             host_name: host_name.clone(),
             status: "ONLINE".to_string(),
-            players: vec![host_name], // Host is the first player
+            players: vec![], // Host must join like everyone else
         }
     }
 
