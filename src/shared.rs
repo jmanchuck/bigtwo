@@ -10,7 +10,7 @@ use thiserror::Error;
 use crate::room::repository::RoomRepository;
 use crate::session::repository::SessionRepository;
 use crate::websockets::ConnectionManager;
-use crate::{event::EventBus, gamemanager::GameManager};
+use crate::{event::EventBus, game::GameManager};
 
 /// Shared application state containing all dependencies
 #[derive(Clone)]

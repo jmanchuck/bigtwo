@@ -1,7 +1,5 @@
-mod cards;
 mod event;
 mod game;
-mod gamemanager;
 mod room;
 mod session;
 mod shared;
@@ -24,7 +22,7 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::websockets::InMemoryConnectionManager;
-use crate::{event::EventBus, gamemanager::GameManager};
+use crate::{event::EventBus, game::GameManager};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

@@ -13,7 +13,7 @@ use crate::{
     event::{RoomEvent, RoomSubscription},
     session::SessionClaims,
     shared::{AppError, AppState},
-    websockets::room_subscriber::WebSocketRoomSubscriber,
+    websockets::WebSocketRoomSubscriber,
 };
 
 /// HTTP handler for creating a new room

@@ -10,7 +10,7 @@
 // Game history is a list of moves and a list of players (we can derive which player acted based on the history of moves), also has game ID
 
 // The game structure will be passed around to different handlers that can update the state of the game
-use crate::cards::{compare_played_cards, Card, HandError, Rank, Suit};
+use crate::game::cards::{compare_played_cards, Card, HandError, Rank, Suit};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
