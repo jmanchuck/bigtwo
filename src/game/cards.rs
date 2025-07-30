@@ -42,7 +42,7 @@ impl TryFrom<&str> for Suit {
             "C" => Ok(Suit::Clubs),
             "H" => Ok(Suit::Hearts),
             "S" => Ok(Suit::Spades),
-            _ => return Err(s.to_string()),
+            _ => Err(s.to_string()),
         }
     }
 }
@@ -102,7 +102,7 @@ impl TryFrom<&str> for Rank {
             "K" => Ok(Rank::King),
             "A" => Ok(Rank::Ace),
             "2" => Ok(Rank::Two),
-            _ => return Err(s.to_string()),
+            _ => Err(s.to_string()),
         }
     }
 }

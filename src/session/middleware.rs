@@ -4,7 +4,7 @@ use axum::{
     response::Response,
 };
 use std::sync::Arc;
-use tracing::{debug, info, instrument, warn};
+use tracing::{info, instrument, warn};
 
 use super::service::SessionService;
 use crate::shared::{AppError, AppState};

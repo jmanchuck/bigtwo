@@ -26,11 +26,8 @@ impl RoomEventHandler for GameEventRoomSubscriber {
             "Handling game event for WebSocket connections"
         );
 
-        match event {
-            RoomEvent::CreateGame { players } => {
-                self.handle_create_game(room_id, &players).await?;
-            }
-            _ => {}
+        if let RoomEvent::CreateGame { players } = event {
+            self.handle_create_game(room_id, &players).await?;
         }
 
         Ok(())

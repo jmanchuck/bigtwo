@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 use super::{bus::EventBus, room_handler::RoomEventHandler};
 
