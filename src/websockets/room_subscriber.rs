@@ -379,6 +379,10 @@ impl WebSocketRoomSubscriber {
             let player_message = WebSocketMessage::game_started(
                 current_player_turn.clone(),
                 player.cards.iter().map(|card| card.to_string()).collect(),
+                game.players()
+                    .iter()
+                    .map(|player| player.name.clone())
+                    .collect(),
             );
 
             let message_json = serde_json::to_string(&player_message).map_err(|e| {

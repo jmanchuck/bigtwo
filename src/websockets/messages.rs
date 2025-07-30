@@ -84,6 +84,7 @@ pub struct ErrorPayload {
 pub struct GameStartedPayload {
     pub current_turn: String,
     pub cards: Vec<String>, // Player's hand
+    pub player_list: Vec<String>,
 }
 
 /// Helper functions for creating messages
@@ -124,10 +125,15 @@ impl WebSocketMessage {
     }
 
     /// Create a GAME_STARTED message
-    pub fn game_started(current_turn: String, cards: Vec<String>) -> Self {
+    pub fn game_started(
+        current_turn: String,
+        cards: Vec<String>,
+        player_list: Vec<String>,
+    ) -> Self {
         let payload = GameStartedPayload {
             current_turn,
             cards,
+            player_list,
         };
         Self::new(
             MessageType::GameStarted,
