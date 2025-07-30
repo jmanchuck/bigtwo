@@ -7,10 +7,10 @@ use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::event::EventBus;
 use crate::room::repository::RoomRepository;
 use crate::session::repository::SessionRepository;
 use crate::websockets::ConnectionManager;
+use crate::{event::EventBus, gamemanager::GameManager};
 
 /// Shared application state containing all dependencies
 #[derive(Clone)]
@@ -19,6 +19,7 @@ pub struct AppState {
     pub room_repository: Arc<dyn RoomRepository + Send + Sync>,
     pub event_bus: EventBus,
     pub connection_manager: Arc<dyn ConnectionManager>,
+    pub game_manager: Arc<GameManager>,
 }
 
 impl AppState {
@@ -27,12 +28,14 @@ impl AppState {
         room_repository: Arc<dyn RoomRepository + Send + Sync>,
         event_bus: EventBus,
         connection_manager: Arc<dyn ConnectionManager>,
+        game_manager: Arc<GameManager>,
     ) -> Self {
         Self {
             session_repository,
             room_repository,
             event_bus,
             connection_manager,
+            game_manager,
         }
     }
 }
@@ -171,6 +174,7 @@ pub mod test_utils {
         session_repository: Option<Arc<dyn SessionRepository + Send + Sync>>,
         room_repository: Option<Arc<dyn RoomRepository + Send + Sync>>,
         connection_manager: Option<Arc<dyn ConnectionManager>>,
+        game_manager: Option<Arc<GameManager>>,
     }
 
     impl AppStateBuilder {
@@ -179,6 +183,7 @@ pub mod test_utils {
                 session_repository: None,
                 room_repository: None,
                 connection_manager: None,
+                game_manager: None,
             }
         }
 
@@ -200,6 +205,11 @@ pub mod test_utils {
             self
         }
 
+        pub fn with_game_manager(mut self, manager: Arc<GameManager>) -> Self {
+            self.game_manager = Some(manager);
+            self
+        }
+
         pub fn build(self) -> AppState {
             AppState {
                 session_repository: self
@@ -212,6 +222,9 @@ pub mod test_utils {
                 connection_manager: self
                     .connection_manager
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
+                game_manager: self
+                    .game_manager
+                    .unwrap_or_else(|| Arc::new(GameManager::new())),
             }
         }
     }

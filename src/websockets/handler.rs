@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::event::EventBus;
+use crate::event::RoomEvent;
 use crate::shared::{AppError, AppState};
 use crate::websockets::messages::{MessageType, WebSocketMessage};
 
@@ -45,7 +46,7 @@ impl MessageHandler for WebsocketReceiveHandler {
                         self.event_bus
                             .emit_to_room(
                                 room_id,
-                                crate::event::RoomEvent::ChatMessage {
+                                RoomEvent::ChatMessage {
                                     sender: username.to_string(),
                                     content: content.to_string(),
                                 },
@@ -57,8 +58,18 @@ impl MessageHandler for WebsocketReceiveHandler {
                     self.event_bus
                         .emit_to_room(
                             room_id,
-                            crate::event::RoomEvent::PlayerLeaveRequested {
+                            RoomEvent::PlayerLeaveRequested {
                                 player: username.to_string(),
+                            },
+                        )
+                        .await;
+                }
+                MessageType::StartGame => {
+                    self.event_bus
+                        .emit_to_room(
+                            room_id,
+                            RoomEvent::TryStartGame {
+                                host: username.to_string(),
                             },
                         )
                         .await;

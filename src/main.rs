@@ -2,7 +2,6 @@ mod cards;
 mod event;
 mod game;
 mod gamemanager;
-mod lobby;
 mod room;
 mod session;
 mod shared;
@@ -24,8 +23,8 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::event::EventBus;
 use crate::websockets::InMemoryConnectionManager;
+use crate::{event::EventBus, gamemanager::GameManager};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -65,12 +64,14 @@ async fn main() {
     let room_repository = Arc::new(InMemoryRoomRepository::new());
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
+    let game_manager = Arc::new(GameManager::new());
 
     let app_state = AppState::new(
         session_repository,
         room_repository,
         event_bus,
         connection_manager,
+        game_manager,
     );
 
     // Configure CORS for development

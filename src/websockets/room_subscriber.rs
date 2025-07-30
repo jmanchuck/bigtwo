@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 use crate::{
-    event::{RoomEvent, RoomEventError, RoomEventHandler},
-    room::repository::LeaveRoomResult,
-    room::repository::RoomRepository,
-    room::service::RoomService,
+    event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler, RoomSubscription},
+    game::Game,
+    gamemanager::GameManager,
+    room::{
+        repository::{LeaveRoomResult, RoomRepository},
+        service::RoomService,
+    },
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
@@ -19,7 +22,8 @@ use crate::{
 pub struct WebSocketRoomSubscriber {
     room_repository: Arc<dyn RoomRepository + Send + Sync>,
     connection_manager: Arc<dyn ConnectionManager>,
-    event_bus: crate::event::EventBus,
+    game_manager: Arc<GameManager>,
+    event_bus: EventBus,
 }
 
 #[async_trait]
@@ -29,7 +33,7 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
         room_id: &str,
         event: RoomEvent,
     ) -> Result<(), RoomEventError> {
-        debug!(
+        info!(
             room_id = %room_id,
             event = ?event,
             "Handling room event for WebSocket connections"
@@ -51,8 +55,10 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
             RoomEvent::PlayerDisconnected { player } => {
                 self.handle_leave_request(room_id, &player).await
             }
+            RoomEvent::StartGame { game } => self.handle_start_game(room_id, game).await,
+            RoomEvent::TryStartGame { host } => self.handle_try_start_game(room_id, &host).await,
             _ => {
-                debug!(
+                info!(
                     room_id = %room_id,
                     event = ?event,
                     "Unhandled event type in WebSocketRoomSubscriber"
@@ -71,11 +77,13 @@ impl WebSocketRoomSubscriber {
     pub fn new(
         room_repository: Arc<dyn RoomRepository + Send + Sync>,
         connection_manager: Arc<dyn ConnectionManager>,
+        game_manager: Arc<GameManager>,
         event_bus: crate::event::EventBus,
     ) -> Self {
         Self {
             room_repository,
             connection_manager,
+            game_manager,
             event_bus,
         }
     }
@@ -182,7 +190,7 @@ impl WebSocketRoomSubscriber {
         old_host: &str,
         new_host: &str,
     ) -> Result<(), RoomEventError> {
-        debug!(
+        info!(
             room_id = %room_id,
             old_host = %old_host,
             new_host = %new_host,
@@ -199,7 +207,7 @@ impl WebSocketRoomSubscriber {
         let room = match room {
             Some(room) => room,
             None => {
-                debug!(room_id = %room_id, "Room was deleted, no host change notifications needed");
+                warn!(room_id = %room_id, "Room was deleted, no host change notifications needed");
                 return Ok(());
             }
         };
@@ -217,7 +225,7 @@ impl WebSocketRoomSubscriber {
                 .await;
         }
 
-        debug!(
+        info!(
             room_id = %room_id,
             old_host = %old_host,
             new_host = %new_host,
@@ -234,7 +242,7 @@ impl WebSocketRoomSubscriber {
         sender: &str,
         content: &str,
     ) -> Result<(), RoomEventError> {
-        debug!(
+        info!(
             room_id = %room_id,
             sender = %sender,
             "Handling chat message event"
@@ -250,7 +258,7 @@ impl WebSocketRoomSubscriber {
         let room = match room {
             Some(room) => room,
             None => {
-                debug!(room_id = %room_id, "Room was deleted, no chat notifications needed");
+                warn!(room_id = %room_id, "Room was deleted, no chat notifications needed");
                 return Ok(());
             }
         };
@@ -268,7 +276,7 @@ impl WebSocketRoomSubscriber {
                 .await;
         }
 
-        debug!(
+        info!(
             room_id = %room_id,
             sender = %sender,
             players_notified = room.players.len(),
@@ -283,7 +291,7 @@ impl WebSocketRoomSubscriber {
         room_id: &str,
         player_name: &str,
     ) -> Result<(), RoomEventError> {
-        debug!(
+        info!(
             room_id = %room_id,
             player = %player_name,
             "Processing leave request"
@@ -331,21 +339,21 @@ impl WebSocketRoomSubscriber {
                         .await;
                 }
 
-                debug!(
+                info!(
                     room_id = %room_id,
                     player = %player_name,
                     "Leave request processed successfully"
                 );
             }
             Ok(LeaveRoomResult::RoomDeleted) => {
-                debug!(
+                info!(
                     room_id = %room_id,
                     player = %player_name,
                     "Room deleted after player left"
                 );
             }
             Ok(_) => {
-                debug!(
+                info!(
                     room_id = %room_id,
                     player = %player_name,
                     "Player was not in room or room not found"
@@ -358,6 +366,154 @@ impl WebSocketRoomSubscriber {
                 )));
             }
         }
+
+        Ok(())
+    }
+
+    async fn handle_start_game(&self, room_id: &str, game: Game) -> Result<(), RoomEventError> {
+        info!(room_id = %room_id, "Starting game");
+
+        let current_player_turn = game.current_player_turn();
+
+        for player in game.players() {
+            let player_message = WebSocketMessage::game_started(
+                current_player_turn.clone(),
+                player.cards.iter().map(|card| card.to_string()).collect(),
+            );
+
+            let message_json = serde_json::to_string(&player_message).map_err(|e| {
+                RoomEventError::HandlerError(format!(
+                    "Failed to serialize GAME_STARTED message: {}",
+                    e
+                ))
+            })?;
+
+            self.connection_manager
+                .send_to_player(&player.name, &message_json)
+                .await;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_try_start_game(&self, room_id: &str, host: &str) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            host = %host,
+            "Handling start game event"
+        );
+
+        // Check if the host is the current host
+        let room = self
+            .room_repository
+            .get_room(room_id)
+            .await
+            .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?
+            .ok_or(RoomEventError::RoomNotFound(room_id.to_string()))?;
+
+        if room.host_name != host {
+            info!(room_id = %room_id, "Host is not the current host, cannot start game");
+            return Ok(());
+        }
+
+        // Check if the room has 4 players
+        if room.players.len() != 4 {
+            info!(room_id = %room_id, "Room does not have 4 players, cannot start game");
+            return Ok(());
+        }
+
+        // Create the GameEventRoomSubscriber
+        let game_event_room_subscriber = Arc::new(GameEventRoomSubscriber::new(
+            Arc::clone(&self.game_manager),
+            self.event_bus.clone(),
+        ));
+
+        let game_event_room_subscription = RoomSubscription::new(
+            room_id.to_string(),
+            game_event_room_subscriber,
+            self.event_bus.clone(),
+        );
+
+        let _subscription_handle = game_event_room_subscription.start().await;
+
+        self.event_bus
+            .emit_to_room(
+                room_id,
+                RoomEvent::CreateGame {
+                    players: room.players.clone(),
+                },
+            )
+            .await;
+
+        Ok(())
+    }
+}
+
+pub struct GameEventRoomSubscriber {
+    game_manager: Arc<GameManager>,
+    event_bus: EventBus,
+}
+
+#[async_trait]
+impl RoomEventHandler for GameEventRoomSubscriber {
+    async fn handle_room_event(
+        &self,
+        room_id: &str,
+        event: RoomEvent,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            event = ?event,
+            "Handling game event for WebSocket connections"
+        );
+
+        match event {
+            RoomEvent::CreateGame { players } => {
+                self.handle_create_game(room_id, &players).await?;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn handler_name(&self) -> &'static str {
+        "GameEventRoomSubscriber"
+    }
+}
+
+impl GameEventRoomSubscriber {
+    pub fn new(game_manager: Arc<GameManager>, event_bus: EventBus) -> Self {
+        Self {
+            game_manager,
+            event_bus,
+        }
+    }
+
+    async fn handle_create_game(
+        &self,
+        room_id: &str,
+        players: &[String],
+    ) -> Result<(), RoomEventError> {
+        info!(room_id = %room_id, "Starting Game");
+
+        self.game_manager
+            .create_game(room_id, players)
+            .await
+            .map_err(|e| RoomEventError::HandlerError(format!("Failed to create game: {}", e)))?;
+
+        let game =
+            self.game_manager
+                .get_game(room_id)
+                .await
+                .ok_or(RoomEventError::HandlerError(format!(
+                    "Game not found for room: {}",
+                    room_id
+                )))?;
+
+        let game_message = RoomEvent::StartGame { game: game.clone() };
+
+        self.event_bus.emit_to_room(room_id, game_message).await;
 
         Ok(())
     }

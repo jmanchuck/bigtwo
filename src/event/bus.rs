@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
-use tracing::debug;
+use tracing::{debug, info};
 
 use super::events::RoomEvent;
 
@@ -27,14 +27,14 @@ impl EventBus {
         if let Some(sender) = room_channels.get(room_id) {
             match sender.send(event) {
                 Ok(receiver_count) => {
-                    debug!(
+                    info!(
                         room_id = %room_id,
                         receivers = receiver_count,
                         "Room event emitted"
                     );
                 }
                 Err(_) => {
-                    debug!(room_id = %room_id, "Room event emitted with no receivers");
+                    info!(room_id = %room_id, "Room event emitted with no receivers");
                 }
             }
         } else {

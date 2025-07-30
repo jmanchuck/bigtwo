@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::game::Game;
+
 /// Room-specific events (delivered only to room subscribers)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RoomEvent {
@@ -17,4 +19,10 @@ pub enum RoomEvent {
     PlayerConnected { player: String },
     /// WebSocket connection was lost for a player  
     PlayerDisconnected { player: String },
+    /// Host attempt to start game
+    TryStartGame { host: String },
+    /// Create game (emitted when TryStartGame is successful)
+    CreateGame { players: Vec<String> },
+    /// Start game (emitted when CreateGame is successful)
+    StartGame { game: Game },
 }

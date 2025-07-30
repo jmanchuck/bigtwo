@@ -35,6 +35,7 @@ pub async fn create_room(
     let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
         Arc::clone(&state.room_repository),
         Arc::clone(&state.connection_manager),
+        Arc::clone(&state.game_manager),
         state.event_bus.clone(),
     ));
 
