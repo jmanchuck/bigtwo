@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::game::game::{Game, GameError};
+use crate::game::logic::{Game, GameError};
 use crate::shared::AppError;
 
 enum RoomState {

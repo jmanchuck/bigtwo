@@ -2,7 +2,9 @@ use std::fmt;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, EnumIter,
+)]
 pub enum Suit {
     Diamonds = 0,
     Clubs = 1,
@@ -24,12 +26,16 @@ impl Ord for Suit {
 
 impl fmt::Display for Suit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            Suit::Diamonds => "D",
-            Suit::Clubs => "C",
-            Suit::Hearts => "H",
-            Suit::Spades => "S",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Suit::Diamonds => "D",
+                Suit::Clubs => "C",
+                Suit::Hearts => "H",
+                Suit::Spades => "S",
+            }
+        )
     }
 }
 
@@ -47,7 +53,9 @@ impl TryFrom<&str> for Suit {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, EnumIter,
+)]
 pub enum Rank {
     Three = 0,
     Four = 1,
@@ -66,21 +74,25 @@ pub enum Rank {
 
 impl fmt::Display for Rank {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            Rank::Three => "3",
-            Rank::Four => "4",
-            Rank::Five => "5",
-            Rank::Six => "6",
-            Rank::Seven => "7",
-            Rank::Eight => "8",
-            Rank::Nine => "9",
-            Rank::Ten => "T",
-            Rank::Jack => "J",
-            Rank::Queen => "Q",
-            Rank::King => "K",
-            Rank::Ace => "A",
-            Rank::Two => "2",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Rank::Three => "3",
+                Rank::Four => "4",
+                Rank::Five => "5",
+                Rank::Six => "6",
+                Rank::Seven => "7",
+                Rank::Eight => "8",
+                Rank::Nine => "9",
+                Rank::Ten => "T",
+                Rank::Jack => "J",
+                Rank::Queen => "Q",
+                Rank::King => "K",
+                Rank::Ace => "A",
+                Rank::Two => "2",
+            }
+        )
     }
 }
 
@@ -149,7 +161,7 @@ impl Card {
         if s.len() != 2 {
             return Err(HandError::InvalidHandType);
         }
-        
+
         let rank = Rank::try_from(&s[0..1]).map_err(|_| HandError::InvalidHandType)?;
         let suit = Suit::try_from(&s[1..2]).map_err(|_| HandError::InvalidHandType)?;
 
@@ -802,7 +814,7 @@ mod tests {
     #[rstest]
     #[case(vec![
         Card::new(Rank::King, Suit::Hearts),
-        Card::new(Rank::Ace, Suit::Spades), 
+        Card::new(Rank::Ace, Suit::Spades),
         Card::new(Rank::Two, Suit::Diamonds),
         Card::new(Rank::Three, Suit::Clubs),
         Card::new(Rank::Four, Suit::Hearts),
@@ -891,7 +903,7 @@ mod tests {
         ])
         .unwrap(), false)]
     fn test_straight_comparison_with_straight(#[case] other_hand: Hand, #[case] expected: bool) {
-        let straight = Hand::from_cards(&       vec![
+        let straight = Hand::from_cards(&vec![
             Card::new(Rank::Five, Suit::Hearts),
             Card::new(Rank::Six, Suit::Spades),
             Card::new(Rank::Seven, Suit::Diamonds),
