@@ -131,8 +131,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(game.players().len(), 4);
-        assert_eq!(game.current_player_turn(), "Alice".to_string());
         assert_eq!(game.consecutive_passes(), 0);
+
+        // Check that the current player is the one who has the 3 of diamonds
+        let current_player_name = game.current_player_turn();
+        let current_player = game
+            .players()
+            .iter()
+            .find(|p| p.name == current_player_name)
+            .unwrap();
+        let three_of_diamonds = Card::new(Rank::Three, Suit::Diamonds);
+        assert!(
+            current_player.cards.contains(&three_of_diamonds),
+            "Current player '{}' should have the 3 of diamonds",
+            current_player_name
+        );
 
         // Check the cards are dealt and are all 52 unique cards
         let mut all_cards = Card::all_cards();
