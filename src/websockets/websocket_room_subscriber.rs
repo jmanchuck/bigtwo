@@ -56,6 +56,14 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
             }
             RoomEvent::StartGame { game } => self.handle_start_game(room_id, game).await,
             RoomEvent::TryStartGame { host } => self.handle_try_start_game(room_id, &host).await,
+            RoomEvent::MovePlayed {
+                player,
+                cards,
+                game,
+            } => {
+                self.handle_move_played(room_id, &player, &cards, game)
+                    .await
+            }
             _ => {
                 info!(
                     room_id = %room_id,
@@ -447,6 +455,41 @@ impl WebSocketRoomSubscriber {
                 },
             )
             .await;
+
+        Ok(())
+    }
+
+    async fn handle_move_played(
+        &self,
+        room_id: &str,
+        player: &str,
+        cards: &[String],
+        game: Game,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            player = %player,
+            cards = ?cards,
+            "Handling move played event"
+        );
+
+        for game_player in game.players() {
+            let player_message = WebSocketMessage::move_played(
+                player.to_string(),
+                cards.iter().map(|card| card.to_string()).collect(),
+            );
+
+            let message_json = serde_json::to_string(&player_message).map_err(|e| {
+                RoomEventError::HandlerError(format!(
+                    "Failed to serialize MOVE_PLAYED message: {}",
+                    e
+                ))
+            })?;
+
+            self.connection_manager
+                .send_to_player(&game_player.name, &message_json)
+                .await;
+        }
 
         Ok(())
     }

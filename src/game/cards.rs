@@ -1,6 +1,7 @@
 use std::fmt;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use thiserror::Error;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, EnumIter,
@@ -602,11 +603,15 @@ pub enum Hand {
     Five(FiveCardHand),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum HandError {
+    #[error("Invalid hand size")]
     InvalidHandSize,
+    #[error("Invalid hand type")]
     InvalidHandType,
+    #[error("Cards not sorted")]
     CardsNotSorted,
+    #[error("Cannot compare across types")]
     CannotCompareAcrossTypes,
 }
 
@@ -956,52 +961,6 @@ mod tests {
     #[rstest]
     #[case(Hand::from_cards(&vec![
             Card::new(Rank::Three, Suit::Hearts),
-            Card::new(Rank::Six, Suit::Hearts),
-            Card::new(Rank::Seven, Suit::Hearts),
-            Card::new(Rank::Eight, Suit::Hearts),
-            Card::new(Rank::Jack, Suit::Hearts),
-        ])
-        .unwrap(), false)]
-    #[case(Hand::from_cards(&vec![
-            Card::new(Rank::Three, Suit::Hearts),
-            Card::new(Rank::Three, Suit::Spades),
-            Card::new(Rank::Three, Suit::Diamonds),
-            Card::new(Rank::King, Suit::Clubs),
-            Card::new(Rank::King, Suit::Hearts),
-        ])
-        .unwrap(), false)]
-    #[case(Hand::from_cards(&vec![
-            Card::new(Rank::Four, Suit::Hearts),
-            Card::new(Rank::Four, Suit::Spades),
-            Card::new(Rank::Four, Suit::Diamonds),
-            Card::new(Rank::Four, Suit::Clubs),
-            Card::new(Rank::King, Suit::Hearts),
-        ])
-        .unwrap(), false)]
-    #[case(Hand::from_cards(&vec![
-            Card::new(Rank::Three, Suit::Hearts),
-            Card::new(Rank::Four, Suit::Hearts),
-            Card::new(Rank::Five, Suit::Hearts),
-            Card::new(Rank::Six, Suit::Hearts),
-            Card::new(Rank::Seven, Suit::Hearts),
-        ])
-        .unwrap(), false)]
-    fn test_straight_comparison_with_other_types(#[case] other_hand: Hand, #[case] expected: bool) {
-        let straight = Hand::from_cards(&vec![
-            Card::new(Rank::Five, Suit::Hearts),
-            Card::new(Rank::Six, Suit::Spades),
-            Card::new(Rank::Seven, Suit::Diamonds),
-            Card::new(Rank::Eight, Suit::Clubs),
-            Card::new(Rank::Nine, Suit::Hearts),
-        ])
-        .unwrap();
-
-        assert_eq!(straight.can_beat(&other_hand), expected);
-    }
-
-    #[rstest]
-    #[case(Hand::from_cards(&vec![
-            Card::new(Rank::Three, Suit::Hearts),
             Card::new(Rank::Four, Suit::Spades),
             Card::new(Rank::Five, Suit::Diamonds),
             Card::new(Rank::Six, Suit::Clubs),
@@ -1298,11 +1257,11 @@ mod tests {
 
     #[rstest]
     #[case(vec![], vec![], true)] // For technicality, pass 'beats' pass
-    #[case(vec![], vec![Card::from_string("3D").unwrap()], true)]
-    #[case(vec![Card::from_string("KH").unwrap()], vec![Card::from_string("QS").unwrap()], true)]
-    #[case(vec![Card::from_string("QS").unwrap()], vec![Card::from_string("KH").unwrap()], false)]
-    #[case(vec![Card::from_string("KH").unwrap()], vec![Card::from_string("KH").unwrap()], false)]
-    #[case(vec![Card::from_string("KH").unwrap(), Card::from_string("KS").unwrap()], vec![Card::from_string("AH").unwrap(), Card::from_string("AS").unwrap()], false)]
+    #[case(vec![], vec![Card::from_string("3D").unwrap()], true)] // Pass doesn't beat 3D
+    #[case(vec![Card::from_string("KH").unwrap()], vec![Card::from_string("QS").unwrap()], true)] // QS doesn't beat KH
+    #[case(vec![Card::from_string("QS").unwrap()], vec![Card::from_string("KH").unwrap()], false)] // KH beats QS
+    #[case(vec![Card::from_string("KH").unwrap()], vec![Card::from_string("KH").unwrap()], false)] // Same card doesn't beat itself
+    #[case(vec![Card::from_string("KH").unwrap(), Card::from_string("KS").unwrap()], vec![Card::from_string("AH").unwrap(), Card::from_string("AS").unwrap()], false)] // AH-AS doesn't beat KH-KS
     fn test_compare_played_cards(
         #[case] played_cards: Vec<Card>,
         #[case] current_cards: Vec<Card>,

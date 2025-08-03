@@ -187,7 +187,7 @@ mod tests {
         assert!(!room_response.id.is_empty());
         assert_eq!(room_response.host_name, "test-player");
         assert_eq!(room_response.status, "ONLINE");
-        assert_eq!(room_response.player_count, 1);
+        assert_eq!(room_response.player_count, 0); // Host doesn't auto-join
     }
 
     #[tokio::test]
@@ -390,7 +390,7 @@ mod tests {
         for room in &rooms {
             assert!(!room.id.is_empty());
             assert_eq!(room.status, "ONLINE");
-            assert_eq!(room.player_count, 1);
+            assert_eq!(room.player_count, 0); // Host doesn't auto-join
         }
     }
 
@@ -430,7 +430,7 @@ mod tests {
         assert_eq!(rooms[0].id, created_room.id);
         assert_eq!(rooms[0].host_name, "single-host");
         assert_eq!(rooms[0].status, "ONLINE");
-        assert_eq!(rooms[0].player_count, 1);
+        assert_eq!(rooms[0].player_count, 0); // Host doesn't auto-join
     }
 
     #[tokio::test]
@@ -486,7 +486,7 @@ mod tests {
         assert_eq!(room_response.id, created_room.id);
         assert_eq!(room_response.host_name, "test-host");
         assert_eq!(room_response.status, "ONLINE");
-        assert_eq!(room_response.player_count, 2); // Host + 1 new player
+        assert_eq!(room_response.player_count, 1); // Only the new player who joined
     }
 
     #[tokio::test]
@@ -600,6 +600,6 @@ mod tests {
         assert_eq!(room_response.id, created_room.id);
         assert_eq!(room_response.host_name, "test-host");
         assert_eq!(room_response.status, "ONLINE");
-        assert_eq!(room_response.player_count, 2); // Host + 1 new player (test-player)
+        assert_eq!(room_response.player_count, 1); // Only the new player (test-player) who joined
     }
 }

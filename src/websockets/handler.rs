@@ -8,10 +8,10 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
-use crate::event::EventBus;
 use crate::event::RoomEvent;
 use crate::shared::{AppError, AppState};
 use crate::websockets::messages::{MessageType, WebSocketMessage};
+use crate::{event::EventBus, websockets::messages::MovePayload};
 
 use super::socket::{Connection, MessageHandler};
 
@@ -73,6 +73,26 @@ impl MessageHandler for WebsocketReceiveHandler {
                             },
                         )
                         .await;
+                }
+                MessageType::Move => {
+                    if let Some(cards_array) =
+                        ws_message.payload.get("cards").and_then(|v| v.as_array())
+                    {
+                        let cards: Vec<String> = cards_array
+                            .iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect();
+
+                        self.event_bus
+                            .emit_to_room(
+                                room_id,
+                                RoomEvent::TryPlayMove {
+                                    player: username.to_string(),
+                                    cards,
+                                },
+                            )
+                            .await;
+                    }
                 }
                 _ => {
                     debug!(

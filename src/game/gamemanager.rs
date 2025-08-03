@@ -30,6 +30,12 @@ impl GameManager {
         Ok(())
     }
 
+    pub async fn update_game(&self, room_id: &str, game: Game) -> Result<(), GameError> {
+        let mut games = self.games.write().await;
+        games.insert(room_id.to_string(), game);
+        Ok(())
+    }
+
     pub async fn get_game(&self, room_id: &str) -> Option<Game> {
         let games = self.games.read().await;
         games.get(room_id).cloned()

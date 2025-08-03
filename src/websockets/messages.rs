@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Message types for WebSocket communication
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     // Client -> Server
@@ -71,11 +71,6 @@ pub struct MovePlayedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TurnChangePayload {
-    pub player: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorPayload {
     pub message: String,
 }
@@ -137,6 +132,15 @@ impl WebSocketMessage {
         };
         Self::new(
             MessageType::GameStarted,
+            serde_json::to_value(payload).unwrap(),
+        )
+    }
+
+    /// Create a MOVE_PLAYED message
+    pub fn move_played(player: String, cards: Vec<String>) -> Self {
+        let payload = MovePlayedPayload { player, cards };
+        Self::new(
+            MessageType::MovePlayed,
             serde_json::to_value(payload).unwrap(),
         )
     }

@@ -25,4 +25,12 @@ pub enum RoomEvent {
     CreateGame { players: Vec<String> },
     /// Start game (emitted when CreateGame is successful)
     StartGame { game: Game },
+    /// Player played move
+    TryPlayMove { player: String, cards: Vec<String> },
+    /// Player played move
+    MovePlayed {
+        player: String,
+        cards: Vec<String>,
+        game: Game,
+    },
 }
