@@ -12,6 +12,12 @@ pub struct EventBus {
     room_channels: Arc<RwLock<HashMap<String, broadcast::Sender<RoomEvent>>>>,
 }
 
+impl Default for EventBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EventBus {
     /// Creates a new event bus with the specified room capacity
     pub fn new() -> Self {

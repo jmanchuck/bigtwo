@@ -16,6 +16,12 @@ pub struct GameManager {
     games: Arc<RwLock<HashMap<String, Game>>>,
 }
 
+impl Default for GameManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GameManager {
     pub fn new() -> Self {
         Self {

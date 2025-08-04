@@ -58,6 +58,12 @@ pub struct InMemoryRoomRepository {
     rooms: Mutex<HashMap<String, RoomModel>>,
 }
 
+impl Default for InMemoryRoomRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryRoomRepository {
     /// Creates a new empty in-memory repository
     pub fn new() -> Self {

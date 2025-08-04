@@ -23,6 +23,12 @@ pub struct InMemoryConnectionManager {
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<String>>>>,
 }
 
+impl Default for InMemoryConnectionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryConnectionManager {
     pub fn new() -> Self {
         Self {

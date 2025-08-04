@@ -27,6 +27,12 @@ pub struct InMemorySessionRepository {
     sessions: Mutex<HashMap<String, SessionModel>>,
 }
 
+impl Default for InMemorySessionRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemorySessionRepository {
     /// Creates a new empty in-memory repository
     pub fn new() -> Self {

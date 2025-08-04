@@ -8,11 +8,11 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
+use crate::event::EventBus;
 use crate::event::RoomEvent;
 use crate::game::Card;
 use crate::shared::{AppError, AppState};
 use crate::websockets::messages::{MessageType, WebSocketMessage};
-use crate::{event::EventBus, websockets::messages::MovePayload};
 
 use super::socket::{Connection, MessageHandler};
 

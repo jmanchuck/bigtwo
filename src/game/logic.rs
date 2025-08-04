@@ -80,12 +80,9 @@ impl Game {
         }
 
         // Only validate card comparison for non-pass moves and when there are previous cards
-        if !cards.is_empty() && !self.last_played_cards.is_empty() {
-            if !compare_played_cards(cards, &self.last_played_cards)
-                .map_err(|e| GameError::HandError(e))?
-            {
-                return Err(GameError::InvalidPlayedCards);
-            }
+        if !cards.is_empty() && !self.last_played_cards.is_empty() && !compare_played_cards(cards, &self.last_played_cards)
+                .map_err(GameError::HandError)? {
+            return Err(GameError::InvalidPlayedCards);
         }
 
         if cards.is_empty() {
@@ -121,7 +118,7 @@ impl Game {
 }
 
 mod tests {
-    use super::*;
+    
 
     #[test]
     fn test_new_game() {
