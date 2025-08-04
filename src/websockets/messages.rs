@@ -82,6 +82,11 @@ pub struct GameStartedPayload {
     pub player_list: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnChangePayload {
+    pub player: String,
+}
+
 /// Helper functions for creating messages
 impl WebSocketMessage {
     pub fn new(message_type: MessageType, payload: serde_json::Value) -> Self {
@@ -155,5 +160,14 @@ impl WebSocketMessage {
     pub fn leave(player: String) -> Self {
         let payload = LeavePayload { player };
         Self::new(MessageType::Leave, serde_json::to_value(payload).unwrap())
+    }
+
+    /// Create a TURN_CHANGE message
+    pub fn turn_change(player: String) -> Self {
+        let payload = TurnChangePayload { player };
+        Self::new(
+            MessageType::TurnChange,
+            serde_json::to_value(payload).unwrap(),
+        )
     }
 }

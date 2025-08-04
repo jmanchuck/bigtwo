@@ -3,7 +3,7 @@ use tokio::task::JoinHandle;
 
 use bigtwo::{
     event::{EventBus, RoomSubscription},
-    game::GameManager,
+    game::{GameEventRoomSubscriber, GameManager},
     room::{
         models::RoomModel,
         repository::{InMemoryRoomRepository, RoomRepository},
@@ -78,6 +78,17 @@ impl TestSetupBuilder {
 
         let input_handler = WebsocketReceiveHandler::new(event_bus.clone());
 
+        // Create game event subscriber to handle game logic
+        let game_subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus.clone());
+
+        let game_subscription = RoomSubscription::new(
+            self.room_id.clone(),
+            Arc::new(game_subscriber),
+            event_bus.clone(),
+        );
+        let _game_subscription_handle = game_subscription.start().await;
+
+        // Create websocket subscriber to handle message broadcasting
         let output_subscriber = WebSocketRoomSubscriber::new(
             repo.clone(),
             mock_conn_manager.clone(),

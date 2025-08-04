@@ -25,19 +25,23 @@ impl<'a> MessageAssertion<'a> {
         Self { setup, players }
     }
 
-    /// Assert that players received a specific message type
+    /// Assert that players received a specific message type (consumes the message from queue)
     pub async fn received_message_type(self, expected_type: MessageType) -> MessageContent {
         let mut messages = vec![];
 
         for player in &self.players {
-            let player_messages = self.setup.mock_conn_manager.get_messages_for(player).await;
+            let message = self
+                .setup
+                .mock_conn_manager
+                .consume_message_for(player)
+                .await;
             assert!(
-                !player_messages.is_empty(),
+                message.is_some(),
                 "{} should have received a message",
                 player
             );
 
-            let msg: WebSocketMessage = serde_json::from_str(&player_messages[0]).unwrap();
+            let msg: WebSocketMessage = serde_json::from_str(&message.unwrap()).unwrap();
             assert_eq!(
                 msg.message_type, expected_type,
                 "{} received wrong message type",
@@ -74,6 +78,48 @@ impl<'a> MessageAssertion<'a> {
                 player
             );
         }
+    }
+
+    /// Assert that players received a sequence of message types in order
+    pub async fn received_message_sequence(
+        self,
+        expected_types: Vec<MessageType>,
+    ) -> Vec<MessageContent> {
+        let mut result_messages = vec![];
+
+        for player in &self.players {
+            let player_messages = self.setup.mock_conn_manager.get_messages_for(player).await;
+            assert!(
+                player_messages.len() >= expected_types.len(),
+                "{} should have received {} messages, but only got {}",
+                player,
+                expected_types.len(),
+                player_messages.len()
+            );
+
+            // Check each expected message type in order
+            for (i, expected_type) in expected_types.iter().enumerate() {
+                let msg: WebSocketMessage = serde_json::from_str(&player_messages[i])
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to parse message {} for {}: {}", i, player, e)
+                    });
+
+                assert_eq!(
+                    msg.message_type, *expected_type,
+                    "{} message {} has wrong type: expected {:?}, got {:?}",
+                    player, i, expected_type, msg.message_type
+                );
+
+                // Only collect messages from the first player to avoid duplicates
+                if player == &self.players[0] {
+                    result_messages.push(MessageContent {
+                        payload: msg.payload,
+                    });
+                }
+            }
+        }
+
+        result_messages
     }
 }
 

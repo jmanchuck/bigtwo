@@ -4,7 +4,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler, RoomSubscription},
-    game::{Game, GameEventRoomSubscriber, GameManager},
+    game::{Card, Game, GameEventRoomSubscriber, GameManager},
     room::{
         repository::{LeaveRoomResult, RoomRepository},
         service::RoomService,
@@ -64,6 +64,7 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                 self.handle_move_played(room_id, &player, &cards, game)
                     .await
             }
+            RoomEvent::TurnChanged { player } => self.handle_turn_changed(room_id, &player).await,
             _ => {
                 info!(
                     room_id = %room_id,
@@ -463,7 +464,7 @@ impl WebSocketRoomSubscriber {
         &self,
         room_id: &str,
         player: &str,
-        cards: &[String],
+        cards: &[Card],
         game: Game,
     ) -> Result<(), RoomEventError> {
         info!(
@@ -490,6 +491,46 @@ impl WebSocketRoomSubscriber {
                 .send_to_player(&game_player.name, &message_json)
                 .await;
         }
+
+        Ok(())
+    }
+
+    async fn handle_turn_changed(&self, room_id: &str, player: &str) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            player = %player,
+            "Handling turn changed event"
+        );
+
+        // Get current game to find all players
+        let game =
+            self.game_manager
+                .get_game(room_id)
+                .await
+                .ok_or(RoomEventError::HandlerError(format!(
+                    "Game not found for room: {}",
+                    room_id
+                )))?;
+
+        // Create turn change message
+        let turn_change_message = WebSocketMessage::turn_change(player.to_string());
+        let message_json = serde_json::to_string(&turn_change_message).map_err(|e| {
+            RoomEventError::HandlerError(format!("Failed to serialize TURN_CHANGE message: {}", e))
+        })?;
+
+        // Send to all players in the game
+        for game_player in game.players() {
+            self.connection_manager
+                .send_to_player(&game_player.name, &message_json)
+                .await;
+        }
+
+        info!(
+            room_id = %room_id,
+            player = %player,
+            players_notified = game.players().len(),
+            "Turn change notification sent to all players"
+        );
 
         Ok(())
     }

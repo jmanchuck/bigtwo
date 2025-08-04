@@ -29,19 +29,7 @@ async fn validate_player_turn(game: &Game, player: &str) -> Result<(), RoomEvent
     Ok(())
 }
 
-async fn validate_hand(
-    game: &Game,
-    player: &str,
-    card_strings: &[String],
-) -> Result<(), RoomEventError> {
-    // Convert string cards to Card objects
-    let mut cards = Vec::new();
-    for card_str in card_strings {
-        let card = Card::from_string(card_str)
-            .map_err(|e| RoomEventError::HandlerError(format!("Invalid card format: {}", e)))?;
-        cards.push(card);
-    }
-
+async fn validate_hand(game: &Game, player: &str, cards: &[Card]) -> Result<(), RoomEventError> {
     // Find the player's hand
     let player_hand = game
         .players()
@@ -55,7 +43,7 @@ async fn validate_hand(
         .clone();
 
     // Check if player has all the cards they're trying to play
-    for card in &cards {
+    for card in cards {
         if !player_hand.contains(card) {
             return Err(RoomEventError::HandlerError(format!(
                 "Player doesn't have card: {}",
@@ -67,24 +55,18 @@ async fn validate_hand(
     Ok(())
 }
 
-async fn validate_move(game: &Game, card_strings: &[String]) -> Result<(), RoomEventError> {
-    // Convert string cards to Card objects
-    let mut cards = Vec::new();
-    for card_str in card_strings {
-        let card = Card::from_string(card_str)
-            .map_err(|e| RoomEventError::HandlerError(format!("Invalid card format: {}", e)))?;
-        cards.push(card);
-    }
-
+async fn validate_move(game: &Game, cards: &[Card]) -> Result<(), RoomEventError> {
     // Check if the move is valid against the last played cards (skip for passes and first moves)
     if !game.last_played_cards().is_empty() && !cards.is_empty() {
-        let is_valid = compare_played_cards(game.last_played_cards(), &cards)
+        let is_valid = compare_played_cards(cards, game.last_played_cards())
             .map_err(|e| RoomEventError::HandlerError(format!("Invalid move comparison: {}", e)))?;
 
         if !is_valid {
-            return Err(RoomEventError::HandlerError(
-                "Move doesn't beat previous move".to_string(),
-            ));
+            return Err(RoomEventError::HandlerError(format!(
+                "Move {:?} doesn't beat previous move {:?}",
+                cards,
+                game.last_played_cards()
+            )));
         }
     }
 
@@ -163,7 +145,7 @@ impl GameEventRoomSubscriber {
         &self,
         room_id: &str,
         player: &str,
-        cards: &[String],
+        cards: &[Card],
     ) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, player = %player, cards = ?cards, "Player played move");
 
@@ -185,17 +167,38 @@ impl GameEventRoomSubscriber {
         // Execute the move
         self.execute_move(room_id, player, cards).await?;
 
-        // Emit event after move is executed
+        // Get updated game after move execution to get current turn
+        let updated_game =
+            self.game_manager
+                .get_game(room_id)
+                .await
+                .ok_or(RoomEventError::HandlerError(format!(
+                    "Game not found for room after move: {}",
+                    room_id
+                )))?;
+
+        // Emit move played event
         self.event_bus
             .emit_to_room(
                 room_id,
                 RoomEvent::MovePlayed {
                     player: player.to_string(),
-                    cards: cards.iter().map(|c| c.to_string()).collect(),
-                    game,
+                    cards: cards.to_vec(),
+                    game: updated_game.clone(),
                 },
             )
             .await;
+
+        // Emit turn changed event with the new current player
+        self.event_bus
+            .emit_to_room(
+                room_id,
+                RoomEvent::TurnChanged {
+                    player: updated_game.current_player_turn(),
+                },
+            )
+            .await;
+
         Ok(())
     }
 
@@ -203,16 +206,8 @@ impl GameEventRoomSubscriber {
         &self,
         room_id: &str,
         player: &str,
-        card_strings: &[String],
+        cards: &[Card],
     ) -> Result<(), RoomEventError> {
-        // Convert string cards to Card objects
-        let mut cards = Vec::new();
-        for card_str in card_strings {
-            let card = Card::from_string(card_str)
-                .map_err(|e| RoomEventError::HandlerError(format!("Invalid card format: {}", e)))?;
-            cards.push(card);
-        }
-
         // Get and update the game
         let mut game =
             self.game_manager
@@ -224,7 +219,7 @@ impl GameEventRoomSubscriber {
                 )))?;
 
         // Execute the move
-        game.play_cards(player, &cards)
+        game.play_cards(player, cards)
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to play cards: {}", e)))?;
 
         // Update the game in the manager
@@ -315,35 +310,27 @@ mod tests {
         let game = create_test_game();
 
         // Alice has 3D, 4H, 5S - let's try to play 3D
-        let result = validate_hand(&game, "Alice", &["3D".to_string()]).await;
+        let result = validate_hand(&game, "Alice", &[Card::new(Rank::Three, Suit::Diamonds)]).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_validate_hand_player_not_found() {
         let game = create_test_game();
-        let result = validate_hand(&game, "Eve", &["3D".to_string()]).await;
+        let result = validate_hand(&game, "Eve", &[Card::new(Rank::Three, Suit::Diamonds)]).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Player not found"));
     }
 
-    #[tokio::test]
-    async fn test_validate_hand_invalid_card_format() {
-        let game = create_test_game();
-        let result = validate_hand(&game, "Alice", &["INVALID".to_string()]).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid card format"));
-    }
+    // Note: Invalid card format test removed since validation now happens
+    // early in the websocket handler, not in validate_hand
 
     #[tokio::test]
     async fn test_validate_hand_player_doesnt_have_card() {
         let game = create_test_game();
 
         // Alice doesn't have the Ace of Spades (David has AC)
-        let result = validate_hand(&game, "Alice", &["AS".to_string()]).await;
+        let result = validate_hand(&game, "Alice", &[Card::new(Rank::Ace, Suit::Spades)]).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -356,20 +343,26 @@ mod tests {
         let game = create_test_game();
 
         // First move should always be valid (no last played cards)
-        let result = validate_move(&game, &["3D".to_string()]).await;
+        let result = validate_move(&game, &[Card::new(Rank::Three, Suit::Diamonds)]).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn test_validate_move_invalid_card_format() {
-        let game = create_test_game();
-        let result = validate_move(&game, &["INVALID".to_string()]).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid card format"));
+    async fn test_valid_move_played() {
+        let game = Game::new(
+            "test_room".to_string(),
+            create_test_players(),
+            0,
+            0,
+            vec![Card::new(Rank::Three, Suit::Diamonds)],
+        );
+        let result = validate_move(&game, &[Card::new(Rank::Three, Suit::Spades)]).await;
+
+        assert!(result.is_ok());
     }
+
+    // Note: Invalid card format test removed since validation now happens
+    // early in the websocket handler, not in validate_move
 
     #[tokio::test]
     async fn test_game_room_subscriber_new() {
@@ -422,7 +415,11 @@ mod tests {
 
         // Alice has 3D, so she can play it
         let result = subscriber
-            .handle_player_played_move("test_room", "Alice", &["3D".to_string()])
+            .handle_player_played_move(
+                "test_room",
+                "Alice",
+                &[Card::new(Rank::Three, Suit::Diamonds)],
+            )
             .await;
         assert!(result.is_ok());
     }
@@ -434,7 +431,11 @@ mod tests {
         let subscriber = GameEventRoomSubscriber::new(game_manager, event_bus);
 
         let result = subscriber
-            .handle_player_played_move("nonexistent_room", "Alice", &["3D".to_string()])
+            .handle_player_played_move(
+                "nonexistent_room",
+                "Alice",
+                &[Card::new(Rank::Three, Suit::Diamonds)],
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Game not found"));
@@ -455,7 +456,7 @@ mod tests {
 
         // Try to play with Bob when it's Alice's turn
         let result = subscriber
-            .handle_player_played_move("test_room", "Bob", &["6C".to_string()])
+            .handle_player_played_move("test_room", "Bob", &[Card::new(Rank::Six, Suit::Clubs)])
             .await;
         assert!(result.is_err());
         assert!(result
@@ -478,33 +479,17 @@ mod tests {
             .unwrap();
 
         let result = subscriber
-            .execute_move("test_room", "Alice", &["3D".to_string()])
+            .execute_move(
+                "test_room",
+                "Alice",
+                &[Card::new(Rank::Three, Suit::Diamonds)],
+            )
             .await;
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn test_execute_move_invalid_card_format() {
-        let game_manager = Arc::new(GameManager::new());
-        let event_bus = EventBus::new();
-        let subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus);
-
-        // Manually insert a deterministic game
-        let test_game = create_test_game();
-        game_manager
-            .update_game("test_room", test_game)
-            .await
-            .unwrap();
-
-        let result = subscriber
-            .execute_move("test_room", "Alice", &["INVALID".to_string()])
-            .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid card format"));
-    }
+    // Note: Invalid card format test removed since validation now happens
+    // early in the websocket handler, not in execute_move
 
     #[tokio::test]
     async fn test_execute_move_game_not_found() {
@@ -513,7 +498,11 @@ mod tests {
         let subscriber = GameEventRoomSubscriber::new(game_manager, event_bus);
 
         let result = subscriber
-            .execute_move("nonexistent_room", "Alice", &["3D".to_string()])
+            .execute_move(
+                "nonexistent_room",
+                "Alice",
+                &[Card::new(Rank::Three, Suit::Diamonds)],
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Game not found"));

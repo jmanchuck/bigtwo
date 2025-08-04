@@ -39,6 +39,17 @@ impl MockConnectionManager {
             .unwrap_or_default()
     }
 
+    /// Consume and return the first message for a player (like a proper queue)
+    pub async fn consume_message_for(&self, username: &str) -> Option<String> {
+        let mut messages = self.sent_messages.write().await;
+        let player_messages = messages.get_mut(username)?;
+        if player_messages.is_empty() {
+            None
+        } else {
+            Some(player_messages.remove(0))
+        }
+    }
+
     pub async fn clear_messages(&self) {
         self.sent_messages.write().await.clear();
     }

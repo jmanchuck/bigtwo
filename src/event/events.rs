@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game::Game;
+use crate::game::{Card, Game};
 
 /// Room-specific events (delivered only to room subscribers)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,11 +26,13 @@ pub enum RoomEvent {
     /// Start game (emitted when CreateGame is successful)
     StartGame { game: Game },
     /// Player played move
-    TryPlayMove { player: String, cards: Vec<String> },
+    TryPlayMove { player: String, cards: Vec<Card> },
     /// Player played move
     MovePlayed {
         player: String,
-        cards: Vec<String>,
+        cards: Vec<Card>,
         game: Game,
     },
+    /// Turn changed to next player
+    TurnChanged { player: String },
 }

@@ -617,7 +617,7 @@ pub enum HandError {
 
 impl Hand {
     /// Create a hand from a vector of cards
-    pub fn from_cards(cards: &Vec<Card>) -> Result<Self, HandError> {
+    pub fn from_cards(cards: &[Card]) -> Result<Self, HandError> {
         match cards.len() {
             0 => Ok(Hand::Pass),
             1 => Ok(Hand::Single(SingleHand::new(cards[0]))),
@@ -661,13 +661,13 @@ impl Hand {
 }
 
 pub fn compare_played_cards(
-    played_cards: &Vec<Card>,
-    current_cards: &Vec<Card>,
+    played_cards: &[Card],
+    previous_cards: &[Card],
 ) -> Result<bool, HandError> {
     let played_hand = Hand::from_cards(played_cards)?;
-    let current_hand = Hand::from_cards(current_cards)?;
+    let previous_hand = Hand::from_cards(previous_cards)?;
 
-    Ok(played_hand.can_beat(&current_hand))
+    Ok(played_hand.can_beat(&previous_hand))
 }
 
 #[cfg(test)]

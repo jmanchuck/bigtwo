@@ -73,7 +73,7 @@ impl Game {
         Ok(Self::new(id, players, 0, 0, vec![]))
     }
 
-    pub fn play_cards(&mut self, player_name: &str, cards: &Vec<Card>) -> Result<(), GameError> {
+    pub fn play_cards(&mut self, player_name: &str, cards: &[Card]) -> Result<(), GameError> {
         let player = &self.players[self.current_turn];
         if player.name != player_name {
             return Err(GameError::InvalidPlayerTurn);
@@ -81,7 +81,7 @@ impl Game {
 
         // Only validate card comparison for non-pass moves and when there are previous cards
         if !cards.is_empty() && !self.last_played_cards.is_empty() {
-            if !compare_played_cards(&self.last_played_cards, cards)
+            if !compare_played_cards(cards, &self.last_played_cards)
                 .map_err(|e| GameError::HandError(e))?
             {
                 return Err(GameError::InvalidPlayedCards);
@@ -97,7 +97,7 @@ impl Game {
             self.consecutive_passes = 0;
         }
 
-        self.last_played_cards = cards.clone();
+        self.last_played_cards = cards.to_vec();
 
         self.current_turn = (self.current_turn + 1) % self.players.len();
         Ok(())
@@ -115,7 +115,7 @@ impl Game {
         self.consecutive_passes
     }
 
-    pub fn last_played_cards(&self) -> &Vec<Card> {
+    pub fn last_played_cards(&self) -> &[Card] {
         &self.last_played_cards
     }
 }

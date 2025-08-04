@@ -43,6 +43,73 @@ async fn test_insufficient_players_cannot_start_game() {
 }
 
 #[tokio::test]
+async fn test_turn_progression_after_move() {
+    let setup = TestSetupBuilder::new().with_four_players().build().await;
+    let first_player = GameBuilder::new()
+        .with_cards(vec![
+            (
+                "alice",
+                vec![
+                    Card::new(Rank::Three, Suit::Diamonds), // Alice has 3D, goes first
+                    Card::new(Rank::Five, Suit::Hearts),
+                    Card::new(Rank::Eight, Suit::Spades),
+                    Card::new(Rank::Jack, Suit::Clubs),
+                    Card::new(Rank::Jack, Suit::Hearts), // Alice has a pair of Jacks
+                ],
+            ),
+            (
+                "bob",
+                vec![
+                    Card::new(Rank::Four, Suit::Clubs),
+                    Card::new(Rank::Six, Suit::Diamonds),
+                    Card::new(Rank::Nine, Suit::Hearts),
+                ],
+            ),
+            (
+                "charlie",
+                vec![
+                    Card::new(Rank::Seven, Suit::Spades),
+                    Card::new(Rank::Ten, Suit::Clubs),
+                    Card::new(Rank::Queen, Suit::Diamonds),
+                ],
+            ),
+            (
+                "david",
+                vec![
+                    Card::new(Rank::King, Suit::Hearts),
+                    Card::new(Rank::Ace, Suit::Spades),
+                    Card::new(Rank::Two, Suit::Clubs),
+                ],
+            ),
+        ])
+        .build_with_setup(&setup)
+        .await;
+
+    setup.clear_messages().await;
+    setup.send_move(&first_player, vec!["3D"]).await;
+
+    MessageAssertion::for_all_players(&setup)
+        .received_message_type(MessageType::MovePlayed)
+        .await;
+
+    MessageAssertion::for_all_players(&setup)
+        .received_message_type(MessageType::TurnChange)
+        .await;
+
+    let updated_game = setup
+        .game_manager
+        .get_game("room-123")
+        .await
+        .expect("Game should exist");
+
+    let new_current_player = updated_game.current_player_turn();
+    assert_ne!(
+        first_player, new_current_player,
+        "Turn should have advanced to next player"
+    );
+}
+
+#[tokio::test]
 async fn test_valid_first_move_with_three_of_diamonds() {
     let setup = TestSetupBuilder::new().with_two_players().build().await;
     let first_player = GameBuilder::new()

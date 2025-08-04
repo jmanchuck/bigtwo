@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use crate::event::RoomEvent;
+use crate::game::Card;
 use crate::shared::{AppError, AppState};
 use crate::websockets::messages::{MessageType, WebSocketMessage};
 use crate::{event::EventBus, websockets::messages::MovePayload};
@@ -78,20 +79,39 @@ impl MessageHandler for WebsocketReceiveHandler {
                     if let Some(cards_array) =
                         ws_message.payload.get("cards").and_then(|v| v.as_array())
                     {
-                        let cards: Vec<String> = cards_array
+                        let card_strings: Vec<String> = cards_array
                             .iter()
                             .filter_map(|v| v.as_str().map(|s| s.to_string()))
                             .collect();
 
-                        self.event_bus
-                            .emit_to_room(
-                                room_id,
-                                RoomEvent::TryPlayMove {
-                                    player: username.to_string(),
-                                    cards,
-                                },
-                            )
-                            .await;
+                        // Convert card strings to Card objects early
+                        let cards: Result<Vec<Card>, _> = card_strings
+                            .iter()
+                            .map(|card_str| Card::from_string(card_str))
+                            .collect();
+
+                        match cards {
+                            Ok(cards) => {
+                                self.event_bus
+                                    .emit_to_room(
+                                        room_id,
+                                        RoomEvent::TryPlayMove {
+                                            player: username.to_string(),
+                                            cards,
+                                        },
+                                    )
+                                    .await;
+                            }
+                            Err(e) => {
+                                warn!(
+                                    username = %username,
+                                    room_id = %room_id,
+                                    error = %e,
+                                    "Invalid card format in move"
+                                );
+                                // TODO: Send error message back to client
+                            }
+                        }
                     }
                 }
                 _ => {
