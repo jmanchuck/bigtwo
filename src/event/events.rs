@@ -35,4 +35,6 @@ pub enum RoomEvent {
     },
     /// Turn changed to next player
     TurnChanged { player: String },
+    /// Game won by a player
+    GameWon { winner: String },
 }

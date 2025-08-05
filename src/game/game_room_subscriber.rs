@@ -164,8 +164,14 @@ impl GameEventRoomSubscriber {
         validate_hand(&game, player, cards).await?;
         validate_move(&game, cards).await?;
 
-        // Execute the move
-        self.execute_move(room_id, player, cards).await?;
+        // Execute the move and check if player won
+        let player_won = self.execute_move(room_id, player, cards).await?;
+
+        // If player won, the GameWon event was already emitted in execute_move
+        // Don't emit normal game flow events
+        if player_won {
+            return Ok(());
+        }
 
         // Get updated game after move execution to get current turn
         let updated_game =
@@ -207,7 +213,7 @@ impl GameEventRoomSubscriber {
         room_id: &str,
         player: &str,
         cards: &[Card],
-    ) -> Result<(), RoomEventError> {
+    ) -> Result<bool, RoomEventError> {
         // Get and update the game
         let mut game =
             self.game_manager
@@ -218,8 +224,8 @@ impl GameEventRoomSubscriber {
                     room_id
                 )))?;
 
-        // Execute the move
-        game.play_cards(player, cards)
+        // Execute the move and check if player won
+        let player_won = game.play_cards(player, cards)
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to play cards: {}", e)))?;
 
         // Update the game in the manager
@@ -228,7 +234,20 @@ impl GameEventRoomSubscriber {
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to update game: {}", e)))?;
 
-        Ok(())
+        // If player won, emit GameWon event and don't continue with normal flow
+        if player_won {
+            self.event_bus
+                .emit_to_room(
+                    room_id,
+                    RoomEvent::GameWon {
+                        winner: player.to_string(),
+                    },
+                )
+                .await;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 
@@ -506,5 +525,106 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Game not found"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_move_player_wins() {
+        let game_manager = Arc::new(GameManager::new());
+        let event_bus = EventBus::new();
+        let subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus.clone());
+
+        // Create a test game where Alice has only one card left
+        let test_game = Game::new(
+            "test_room".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![Card::new(Rank::Three, Suit::Diamonds)], // Only one card
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        game_manager
+            .update_game("test_room", test_game)
+            .await
+            .unwrap();
+
+        // Alice plays her last card - should win
+        let result = subscriber
+            .execute_move(
+                "test_room",
+                "Alice",
+                &[Card::new(Rank::Three, Suit::Diamonds)],
+            )
+            .await;
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true); // Should return true indicating player won
+
+        // Verify Alice has no cards left
+        let updated_game = game_manager.get_game("test_room").await.unwrap();
+        let alice = updated_game.players().iter().find(|p| p.name == "Alice").unwrap();
+        assert_eq!(alice.cards.len(), 0);
+
+        // Note: In a real integration test, we would also verify that the GameWon event was emitted,
+        // but that would require more complex event bus testing infrastructure
+    }
+
+    #[tokio::test]
+    async fn test_execute_move_game_continues() {
+        let game_manager = Arc::new(GameManager::new());
+        let event_bus = EventBus::new();
+        let subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus.clone());
+
+        // Create a test game where Alice has multiple cards
+        let test_game = Game::new(
+            "test_room".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts), // Multiple cards
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        game_manager
+            .update_game("test_room", test_game)
+            .await
+            .unwrap();
+
+        // Alice plays one card - game should continue
+        let result = subscriber
+            .execute_move(
+                "test_room",
+                "Alice",
+                &[Card::new(Rank::Three, Suit::Diamonds)],
+            )
+            .await;
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false); // Should return false indicating game continues
+
+        // Verify Alice has one card left
+        let updated_game = game_manager.get_game("test_room").await.unwrap();
+        let alice = updated_game.players().iter().find(|p| p.name == "Alice").unwrap();
+        assert_eq!(alice.cards.len(), 1);
+        assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }
 }

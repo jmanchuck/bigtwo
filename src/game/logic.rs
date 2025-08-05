@@ -73,7 +73,7 @@ impl Game {
         Ok(Self::new(id, players, 0, 0, vec![]))
     }
 
-    pub fn play_cards(&mut self, player_name: &str, cards: &[Card]) -> Result<(), GameError> {
+    pub fn play_cards(&mut self, player_name: &str, cards: &[Card]) -> Result<bool, GameError> {
         let player = &self.players[self.current_turn];
         if player.name != player_name {
             return Err(GameError::InvalidPlayerTurn);
@@ -98,12 +98,25 @@ impl Game {
                 self.last_played_cards = vec![];
             }
         } else {
+            // Remove played cards from the player's hand
+            let current_player = &mut self.players[self.current_turn];
+            for card in cards {
+                if let Some(pos) = current_player.cards.iter().position(|c| c == card) {
+                    current_player.cards.remove(pos);
+                }
+            }
+            
             self.consecutive_passes = 0;
             self.last_played_cards = cards.to_vec();
+            
+            // Check if player won (has no cards left)
+            if current_player.cards.is_empty() {
+                return Ok(true); // Player won
+            }
         }
 
         self.current_turn = (self.current_turn + 1) % self.players.len();
-        Ok(())
+        Ok(false) // Game continues
     }
 
     pub fn players(&self) -> &Vec<Player> {
@@ -125,6 +138,7 @@ impl Game {
 
 mod tests {
     use super::*;
+    use crate::game::cards::{Rank, Suit};
 
     #[test]
     fn test_new_game() {
@@ -170,5 +184,180 @@ mod tests {
         // Check that all the cards are unique
         assert_eq!(dealt_cards.len(), 52);
         assert_eq!(dealt_cards, all_cards);
+    }
+
+    #[test]
+    fn test_card_removal_on_play() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts),
+                        Card::new(Rank::Five, Suit::Spades),
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
+        let result = game.play_cards("Alice", &cards_to_play);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false); // Game should continue, Alice didn't win
+
+        // Alice should have 2 cards left
+        let alice = &game.players[0];
+        assert_eq!(alice.cards.len(), 2);
+        assert!(!alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
+        assert!(alice.cards.contains(&Card::new(Rank::Five, Suit::Spades)));
+    }
+
+    #[test]
+    fn test_win_detection_single_card() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![Card::new(Rank::Three, Suit::Diamonds)], // Only one card
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
+        let result = game.play_cards("Alice", &cards_to_play);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true); // Alice should win
+
+        // Alice should have 0 cards left
+        let alice = &game.players[0];
+        assert_eq!(alice.cards.len(), 0);
+    }
+
+    #[test]
+    fn test_win_detection_multiple_cards() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Diamonds),
+                    ], // Two cards left
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        // Alice plays both remaining cards
+        let cards_to_play = vec![
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::Four, Suit::Diamonds),
+        ];
+        let result = game.play_cards("Alice", &cards_to_play);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true); // Alice should win
+
+        // Alice should have 0 cards left
+        let alice = &game.players[0];
+        assert_eq!(alice.cards.len(), 0);
+    }
+
+    #[test]
+    fn test_pass_does_not_remove_cards() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts),
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![Card::new(Rank::Five, Suit::Spades)], // Someone played before
+        );
+
+        // Alice passes (empty cards vector)
+        let result = game.play_cards("Alice", &[]);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false); // Game continues
+
+        // Alice should still have 2 cards
+        let alice = &game.players[0];
+        assert_eq!(alice.cards.len(), 2);
+        assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
+    }
+
+    #[test]
+    fn test_invalid_card_not_removed() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts),
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        // Try to play a card Alice doesn't have
+        let cards_to_play = vec![Card::new(Rank::Ace, Suit::Spades)];
+        let result = game.play_cards("Alice", &cards_to_play);
+        
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false); // Game continues
+
+        // Alice should still have 2 cards (invalid card wasn't in her hand anyway)
+        let alice = &game.players[0];
+        assert_eq!(alice.cards.len(), 2);
+        assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }
 }

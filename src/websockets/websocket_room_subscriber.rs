@@ -65,6 +65,7 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .await
             }
             RoomEvent::TurnChanged { player } => self.handle_turn_changed(room_id, &player).await,
+            RoomEvent::GameWon { winner } => self.handle_game_won(room_id, &winner).await,
             _ => {
                 info!(
                     room_id = %room_id,
@@ -530,6 +531,46 @@ impl WebSocketRoomSubscriber {
             player = %player,
             players_notified = game.players().len(),
             "Turn change notification sent to all players"
+        );
+
+        Ok(())
+    }
+
+    async fn handle_game_won(&self, room_id: &str, winner: &str) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            winner = %winner,
+            "Handling game won event"
+        );
+
+        // Get current game to find all players
+        let game =
+            self.game_manager
+                .get_game(room_id)
+                .await
+                .ok_or(RoomEventError::HandlerError(format!(
+                    "Game not found for room: {}",
+                    room_id
+                )))?;
+
+        // Create game won message
+        let game_won_message = WebSocketMessage::game_won(winner.to_string());
+        let message_json = serde_json::to_string(&game_won_message).map_err(|e| {
+            RoomEventError::HandlerError(format!("Failed to serialize GAME_WON message: {}", e))
+        })?;
+
+        // Send to all players in the game
+        for game_player in game.players() {
+            self.connection_manager
+                .send_to_player(&game_player.name, &message_json)
+                .await;
+        }
+
+        info!(
+            room_id = %room_id,
+            winner = %winner,
+            players_notified = game.players().len(),
+            "Game won notification sent to all players"
         );
 
         Ok(())

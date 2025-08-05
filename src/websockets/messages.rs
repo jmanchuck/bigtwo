@@ -18,6 +18,7 @@ pub enum MessageType {
     TurnChange,
     Error,
     GameStarted,
+    GameWon,
 }
 
 /// Metadata for WebSocket messages
@@ -85,6 +86,11 @@ pub struct GameStartedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnChangePayload {
     pub player: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameWonPayload {
+    pub winner: String,
 }
 
 /// Helper functions for creating messages
@@ -167,6 +173,15 @@ impl WebSocketMessage {
         let payload = TurnChangePayload { player };
         Self::new(
             MessageType::TurnChange,
+            serde_json::to_value(payload).unwrap(),
+        )
+    }
+
+    /// Create a GAME_WON message
+    pub fn game_won(winner: String) -> Self {
+        let payload = GameWonPayload { winner };
+        Self::new(
+            MessageType::GameWon,
             serde_json::to_value(payload).unwrap(),
         )
     }
