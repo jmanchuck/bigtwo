@@ -80,8 +80,11 @@ impl Game {
         }
 
         // Only validate card comparison for non-pass moves and when there are previous cards
-        if !cards.is_empty() && !self.last_played_cards.is_empty() && !compare_played_cards(cards, &self.last_played_cards)
-                .map_err(GameError::HandError)? {
+        if !cards.is_empty()
+            && !self.last_played_cards.is_empty()
+            && !compare_played_cards(cards, &self.last_played_cards)
+                .map_err(GameError::HandError)?
+        {
             return Err(GameError::InvalidPlayedCards);
         }
 
@@ -90,11 +93,14 @@ impl Game {
                 return Err(GameError::CannotPass);
             }
             self.consecutive_passes += 1;
+            // When 3 consecutive passes occur, clear the last played cards
+            if self.consecutive_passes == 3 {
+                self.last_played_cards = vec![];
+            }
         } else {
             self.consecutive_passes = 0;
+            self.last_played_cards = cards.to_vec();
         }
-
-        self.last_played_cards = cards.to_vec();
 
         self.current_turn = (self.current_turn + 1) % self.players.len();
         Ok(())
@@ -118,7 +124,7 @@ impl Game {
 }
 
 mod tests {
-    
+    use super::*;
 
     #[test]
     fn test_new_game() {
