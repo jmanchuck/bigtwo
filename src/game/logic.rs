@@ -56,9 +56,13 @@ impl Game {
 
         let mut players: Vec<Player> = player_names
             .iter()
-            .map(|name| Player {
-                name: name.to_string(),
-                cards: cards.drain(0..13).collect(),
+            .map(|name| {
+                let mut player_cards: Vec<Card> = cards.drain(0..13).collect();
+                player_cards.sort();
+                Player {
+                    name: name.to_string(),
+                    cards: player_cards,
+                }
             })
             .collect();
 
@@ -184,6 +188,17 @@ mod tests {
         // Check that all the cards are unique
         assert_eq!(dealt_cards.len(), 52);
         assert_eq!(dealt_cards, all_cards);
+
+        // Check that each player's cards are sorted
+        for player in game.players() {
+            let mut sorted_cards = player.cards.clone();
+            sorted_cards.sort();
+            assert_eq!(
+                player.cards, sorted_cards,
+                "Player {}'s cards should be sorted",
+                player.name
+            );
+        }
     }
 
     #[test]
