@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use axum::{
-    extract::{Path, Query, State, WebSocketUpgrade},
+    extract::{Path, State, WebSocketUpgrade},
+    http::HeaderMap,
     response::Response,
 };
-use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
@@ -155,32 +155,37 @@ impl MessageHandler for DefaultMessageHandler {
     }
 }
 
-#[derive(Deserialize)]
-pub struct WebSocketQuery {
-    token: String,
-    player: String,
-}
-
-/// WebSocket endpoint that handles authentication via query parameters
-/// GET /ws/{room_id}?token=jwt_token&player=username
+/// WebSocket endpoint that handles authentication via Sec-WebSocket-Protocol header
+/// GET /ws/{room_id} with JWT token in Sec-WebSocket-Protocol header
 pub async fn websocket_handler(
     ws: WebSocketUpgrade,
     Path(room_id): Path<String>,
-    Query(query): Query<WebSocketQuery>,
+    headers: HeaderMap,
     State(app_state): State<AppState>,
 ) -> Result<Response, AppError> {
     info!(
         room_id = %room_id,
-        username = %query.player,
         "WebSocket connection requested"
     );
 
-    // TODO: Validate JWT token properly when SessionService is public
-    // For now, just check that token is not empty
-    if query.token.is_empty() {
-        warn!("Empty token in WebSocket request");
-        return Err(AppError::Unauthorized("Invalid token".to_string()));
-    }
+    // Extract JWT from Sec-WebSocket-Protocol header
+    let jwt_token = headers
+        .get("sec-websocket-protocol")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| {
+            warn!("Missing or invalid Sec-WebSocket-Protocol header");
+            AppError::Unauthorized("Missing authentication token".to_string())
+        })?;
+
+    // Validate JWT token and get username from claims
+    let claims = app_state.session_service.validate_session(jwt_token).await?;
+    let username = claims.username;
+
+    info!(
+        room_id = %room_id,
+        username = %username,
+        "WebSocket authentication successful"
+    );
 
     // Verify room exists using repository
     let room_option = app_state.room_repository.get_room(&room_id).await?;
@@ -194,11 +199,9 @@ pub async fn websocket_handler(
 
     info!(
         room_id = %room_id,
-        username = %query.player,
+        username = %username,
         "Room verified, establishing WebSocket connection"
     );
-
-    let username = query.player.clone();
     Ok(ws.on_upgrade(move |socket| {
         handle_websocket_connection(socket, room_id, username, app_state)
     }))

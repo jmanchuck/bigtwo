@@ -41,7 +41,15 @@ impl InMemoryConnectionManager {
 impl ConnectionManager for InMemoryConnectionManager {
     async fn add_connection(&self, username: String, sender: mpsc::UnboundedSender<String>) {
         let mut connections = self.connections.write().await;
-        connections.insert(username, sender);
+        
+        // If there's an existing connection for this username, close it first
+        if let Some(existing_sender) = connections.insert(username.clone(), sender) {
+            // Drop the existing sender to close the connection
+            drop(existing_sender);
+            tracing::info!(username = %username, "Replaced existing WebSocket connection");
+        } else {
+            tracing::info!(username = %username, "Added new WebSocket connection");
+        }
     }
 
     async fn remove_connection(&self, username: &str) {

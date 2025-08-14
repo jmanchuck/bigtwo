@@ -15,6 +15,7 @@ use room::repository::InMemoryRoomRepository;
 use session::repository::{
     InMemorySessionRepository, PostgresSessionRepository, SessionRepository,
 };
+use session::service::SessionService;
 use shared::AppState;
 use std::sync::Arc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -59,6 +60,7 @@ async fn main() {
             Arc::new(InMemorySessionRepository::new())
         };
 
+    let session_service = Arc::new(SessionService::new(session_repository.clone()));
     let room_repository = Arc::new(InMemoryRoomRepository::new());
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
@@ -66,6 +68,7 @@ async fn main() {
 
     let app_state = AppState::new(
         session_repository,
+        session_service,
         room_repository,
         event_bus,
         connection_manager,
@@ -81,7 +84,7 @@ async fn main() {
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([
             axum::http::header::CONTENT_TYPE,
-            axum::http::HeaderName::from_static("x-session-id"),
+            axum::http::header::AUTHORIZATION,
         ]);
 
     // build our application with a single route

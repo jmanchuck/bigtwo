@@ -8,6 +8,6 @@ mod handlers;
 mod middleware;
 pub mod models;
 pub mod repository;
-mod service;
+pub mod service;
 mod token;
 mod types;

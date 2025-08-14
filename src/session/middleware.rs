@@ -3,13 +3,11 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use std::sync::Arc;
 use tracing::{info, instrument, warn};
 
-use super::service::SessionService;
 use crate::shared::{AppError, AppState};
 
-/// JWT authentication middleware - validates X-Session-ID header and adds SessionClaims to request.
+/// JWT authentication middleware - validates Authorization Bearer header and adds SessionClaims to request.
 /// Usage: .layer(middleware::from_fn_with_state(app_state.clone(), session::jwt_auth))
 /// Handlers can then extract Extension(claims): Extension<SessionClaims>.
 #[instrument(skip(state, req, next))]
@@ -23,20 +21,28 @@ pub async fn jwt_auth(
         req.uri()
     );
 
-    // Use injected repository from app state
-    let service = SessionService::new(Arc::clone(&state.session_repository));
+    // Use session service from app state
+    let service = &state.session_service;
 
-    // Extract token from X-Session-ID header
-    let token = req
+    // Extract token from Authorization Bearer header
+    let auth_header = req
         .headers()
-        .get("X-Session-ID")
+        .get("Authorization")
         .and_then(|header| header.to_str().ok())
         .ok_or_else(|| {
-            warn!("Missing X-Session-ID header in request");
-            AppError::Unauthorized("Missing session token".to_string())
+            warn!("Missing Authorization header in request");
+            AppError::Unauthorized("Missing authorization header".to_string())
         })?;
 
-    info!("Extracted token from X-Session-ID header");
+    // Extract Bearer token
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| {
+            warn!("Invalid Authorization header format (expected Bearer token)");
+            AppError::Unauthorized("Invalid authorization header format".to_string())
+        })?;
+
+    info!("Extracted token from Authorization Bearer header");
 
     // Validate token, log error if it fails
     let claims = match service.validate_session(token).await {
