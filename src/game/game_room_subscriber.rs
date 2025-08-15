@@ -6,9 +6,9 @@ use tracing::info;
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
     game::{
-        cards::{compare_played_cards, Card},
+        cards::Card,
         gamemanager::GameManager,
-        logic::Game,
+        logic::{Game, Player},
     },
 };
 
@@ -17,61 +17,6 @@ pub struct GameEventRoomSubscriber {
     event_bus: EventBus,
 }
 
-// Free functions for pure validation logic
-async fn validate_player_turn(game: &Game, player: &str) -> Result<(), RoomEventError> {
-    if game.current_player_turn() != player {
-        return Err(RoomEventError::HandlerError(format!(
-            "Not player's turn. Expected: {}, got: {}",
-            game.current_player_turn(),
-            player
-        )));
-    }
-    Ok(())
-}
-
-async fn validate_hand(game: &Game, player: &str, cards: &[Card]) -> Result<(), RoomEventError> {
-    // Find the player's hand
-    let player_hand = game
-        .players()
-        .iter()
-        .find(|p| p.name == player)
-        .ok_or(RoomEventError::HandlerError(format!(
-            "Player not found: {}",
-            player
-        )))?
-        .cards
-        .clone();
-
-    // Check if player has all the cards they're trying to play
-    for card in cards {
-        if !player_hand.contains(card) {
-            return Err(RoomEventError::HandlerError(format!(
-                "Player doesn't have card: {}",
-                card
-            )));
-        }
-    }
-
-    Ok(())
-}
-
-async fn validate_move(game: &Game, cards: &[Card]) -> Result<(), RoomEventError> {
-    // Check if the move is valid against the last played cards (skip for passes and first moves)
-    if !game.last_played_cards().is_empty() && !cards.is_empty() {
-        let is_valid = compare_played_cards(cards, game.last_played_cards())
-            .map_err(|e| RoomEventError::HandlerError(format!("Invalid move comparison: {}", e)))?;
-
-        if !is_valid {
-            return Err(RoomEventError::HandlerError(format!(
-                "Move {:?} doesn't beat previous move {:?}",
-                cards,
-                game.last_played_cards()
-            )));
-        }
-    }
-
-    Ok(())
-}
 
 #[async_trait]
 impl RoomEventHandler for GameEventRoomSubscriber {
@@ -149,22 +94,7 @@ impl GameEventRoomSubscriber {
     ) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, player = %player, cards = ?cards, "Player played move");
 
-        // Get the game
-        let game =
-            self.game_manager
-                .get_game(room_id)
-                .await
-                .ok_or(RoomEventError::HandlerError(format!(
-                    "Game not found for room: {}",
-                    room_id
-                )))?;
-
-        // Chain validations using free functions
-        validate_player_turn(&game, player).await?;
-        validate_hand(&game, player, cards).await?;
-        validate_move(&game, cards).await?;
-
-        // Execute the move and check if player won
+        // Execute the move and check if player won (Game::play_cards handles all validation)
         let player_won = self.execute_move(room_id, player, cards).await?;
 
         // If player won, the GameWon event was already emitted in execute_move
@@ -255,7 +185,7 @@ impl GameEventRoomSubscriber {
 mod tests {
     use super::*;
     use crate::game::{
-        cards::{Card, Rank, Suit},
+        cards::{Card, Hand, Rank, Suit},
         logic::{Game, Player},
     };
 
@@ -306,82 +236,6 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    async fn test_validate_player_turn_success() {
-        let game = create_test_game();
-        let result = validate_player_turn(&game, "Alice").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_validate_player_turn_failure() {
-        let game = create_test_game();
-        let result = validate_player_turn(&game, "Bob").await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Not player's turn"));
-    }
-
-    #[tokio::test]
-    async fn test_validate_hand_success() {
-        let game = create_test_game();
-
-        // Alice has 3D, 4H, 5S - let's try to play 3D
-        let result = validate_hand(&game, "Alice", &[Card::new(Rank::Three, Suit::Diamonds)]).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_validate_hand_player_not_found() {
-        let game = create_test_game();
-        let result = validate_hand(&game, "Eve", &[Card::new(Rank::Three, Suit::Diamonds)]).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Player not found"));
-    }
-
-    // Note: Invalid card format test removed since validation now happens
-    // early in the websocket handler, not in validate_hand
-
-    #[tokio::test]
-    async fn test_validate_hand_player_doesnt_have_card() {
-        let game = create_test_game();
-
-        // Alice doesn't have the Ace of Spades (David has AC)
-        let result = validate_hand(&game, "Alice", &[Card::new(Rank::Ace, Suit::Spades)]).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Player doesn't have card"));
-    }
-
-    #[tokio::test]
-    async fn test_validate_move_first_move() {
-        let game = create_test_game();
-
-        // First move should always be valid (no last played cards)
-        let result = validate_move(&game, &[Card::new(Rank::Three, Suit::Diamonds)]).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_valid_move_played() {
-        let game = Game::new(
-            "test_room".to_string(),
-            create_test_players(),
-            0,
-            0,
-            vec![Card::new(Rank::Three, Suit::Diamonds)],
-        );
-        let result = validate_move(&game, &[Card::new(Rank::Three, Suit::Spades)]).await;
-
-        assert!(result.is_ok());
-    }
-
-    // Note: Invalid card format test removed since validation now happens
-    // early in the websocket handler, not in validate_move
 
     #[tokio::test]
     async fn test_game_room_subscriber_new() {
@@ -481,7 +335,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Not player's turn"));
+            .contains("Invalid player"));
     }
 
     #[tokio::test]
