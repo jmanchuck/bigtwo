@@ -5,10 +5,7 @@ use tracing::{debug, info, warn};
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler, RoomSubscription},
     game::{Card, Game, GameEventRoomSubscriber, GameManager},
-    room::{
-        repository::LeaveRoomResult,
-        service::RoomService,
-    },
+    room::{repository::LeaveRoomResult, service::RoomService},
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
@@ -319,7 +316,8 @@ impl WebSocketRoomSubscriber {
             .unwrap_or(false);
 
         // Perform the leave operation using room service
-        match self.room_service
+        match self
+            .room_service
             .leave_room(room_id.to_string(), player_name.to_string())
             .await
         {
