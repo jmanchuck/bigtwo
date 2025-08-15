@@ -212,7 +212,8 @@ impl Ord for SingleHand {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PairHand {
     pub rank: Rank,
-    pub high_card: Card, // The higher suit of the pair
+    pub cards: [Card; 2], // Store both cards in the pair
+    pub high_card: Card,  // The higher suit of the pair (kept for comparison)
 }
 
 impl PairHand {
@@ -226,8 +227,17 @@ impl PairHand {
         } else {
             card2
         };
+        
+        // Store cards in a consistent order: lower suit first, higher suit second
+        let cards = if card1.suit < card2.suit {
+            [card1, card2]
+        } else {
+            [card2, card1]
+        };
+        
         Ok(Self {
             rank: card1.rank,
+            cards,
             high_card,
         })
     }
@@ -251,7 +261,8 @@ impl Ord for PairHand {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TripleHand {
     pub rank: Rank,
-    pub high_card: Card, // The highest suit of the triple
+    pub cards: [Card; 3], // Store all three cards in the triple
+    pub high_card: Card,  // The highest suit of the triple (kept for comparison)
 }
 
 impl TripleHand {
@@ -261,8 +272,14 @@ impl TripleHand {
         }
 
         let high_card = *[card1, card2, card3].iter().max().unwrap();
+        
+        // Store cards in sorted order by suit
+        let mut cards = [card1, card2, card3];
+        cards.sort_by_key(|card| card.suit);
+        
         Ok(Self {
             rank: card1.rank,
+            cards,
             high_card,
         })
     }
@@ -665,13 +682,12 @@ impl Hand {
             Hand::Pass => vec![],
             Hand::Single(single) => vec![single.card],
             Hand::Pair(pair) => {
-                // Need to reconstruct the pair from rank and high card
-                // This is limited since we only store the high card
-                vec![pair.high_card]
+                // Return all cards in the pair
+                pair.cards.to_vec()
             },
             Hand::Triple(triple) => {
-                // Similar limitation - we only have the high card
-                vec![triple.high_card]
+                // Return all cards in the triple
+                triple.cards.to_vec()
             },
             Hand::Five(five) => {
                 match five {

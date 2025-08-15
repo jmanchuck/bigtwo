@@ -19,6 +19,8 @@ pub enum GameError {
     InvalidPlayedCards,
     #[error("Cannot pass - must play cards (3 consecutive passes)")]
     CannotPass,
+    #[error("Player does not own card: {0}")]
+    CardNotOwned(Card),
     #[error("Hand construction error")]
     HandError(HandError),
 }
@@ -105,6 +107,14 @@ impl Game {
             // Add pass to played hands (preserve history)
             self.played_hands.push(Hand::Pass);
         } else {
+            // Validate that player owns all cards before removing any
+            let current_player = &self.players[self.current_turn];
+            for card in cards {
+                if !current_player.cards.contains(card) {
+                    return Err(GameError::CardNotOwned(*card));
+                }
+            }
+            
             // Remove played cards from the player's hand
             let current_player = &mut self.players[self.current_turn];
             for card in cards {
@@ -390,8 +400,9 @@ mod tests {
         let cards_to_play = vec![Card::new(Rank::Ace, Suit::Spades)];
         let result = game.play_cards("Alice", &cards_to_play);
         
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false); // Game continues
+        // Should now return an error for card not owned
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GameError::CardNotOwned(_)));
 
         // Alice should still have 2 cards (invalid card wasn't in her hand anyway)
         let alice = &game.players[0];
@@ -511,9 +522,9 @@ mod tests {
         // Try to play a card Alice doesn't have (Ace of Spades)
         let result = game.play_cards("Alice", &[Card::new(Rank::Ace, Suit::Spades)]);
         
-        // Should succeed but not remove the card (current behavior)
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        // Should now return an error for card not owned
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GameError::CardNotOwned(_)));
         
         // Alice should still have her original 2 cards
         let alice = &game.players[0];
