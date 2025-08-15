@@ -399,4 +399,200 @@ mod tests {
         assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
         assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }
+
+    #[test]
+    fn test_invalid_player_turn() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![Card::new(Rank::Three, Suit::Diamonds)],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        // Try to play with Bob when it's Alice's turn
+        let result = game.play_cards("Bob", &[Card::new(Rank::Six, Suit::Clubs)]);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GameError::InvalidPlayerTurn));
+    }
+
+    #[test]
+    fn test_cannot_pass_after_three_consecutive() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![Card::new(Rank::Three, Suit::Diamonds)],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+                Player {
+                    name: "Charlie".to_string(),
+                    cards: vec![Card::new(Rank::Seven, Suit::Hearts)],
+                },
+                Player {
+                    name: "David".to_string(),
+                    cards: vec![Card::new(Rank::Eight, Suit::Spades)],
+                },
+            ],
+            0, // Alice's turn
+            3, // 3 consecutive passes already
+            vec![Hand::Pass, Hand::Pass, Hand::Pass],
+        );
+
+        // Try to pass when 3 consecutive passes already occurred
+        let result = game.play_cards("Alice", &[]);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GameError::CannotPass));
+    }
+
+    #[test]
+    fn test_invalid_played_cards_cannot_beat_previous() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts),
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::King, Suit::Spades)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![Hand::Single(crate::game::cards::SingleHand::new(Card::new(Rank::King, Suit::Hearts)))], // Previous player played King of Hearts
+        );
+
+        // Try to play a weaker card (3D) when King was played
+        let result = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GameError::InvalidPlayedCards));
+    }
+
+    #[test]
+    fn test_play_cards_player_doesnt_have() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts),
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        // Try to play a card Alice doesn't have (Ace of Spades)
+        let result = game.play_cards("Alice", &[Card::new(Rank::Ace, Suit::Spades)]);
+        
+        // Should succeed but not remove the card (current behavior)
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false);
+        
+        // Alice should still have her original 2 cards
+        let alice = &game.players[0];
+        assert_eq!(alice.cards.len(), 2);
+        assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
+    }
+
+    #[test] 
+    fn test_invalid_hand_construction() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![
+                        Card::new(Rank::Three, Suit::Diamonds),
+                        Card::new(Rank::Four, Suit::Hearts),
+                    ],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            0,
+            vec![],
+        );
+
+        // Try to play an invalid pair (different ranks)
+        let result = game.play_cards("Alice", &[
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::Four, Suit::Hearts),
+        ]);
+        
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), GameError::HandError(_)));
+    }
+
+    #[test]
+    fn test_table_clear_after_three_passes() {
+        let mut game = Game::new(
+            "test".to_string(),
+            vec![
+                Player {
+                    name: "Alice".to_string(),
+                    cards: vec![Card::new(Rank::Three, Suit::Diamonds)],
+                },
+                Player {
+                    name: "Bob".to_string(),
+                    cards: vec![Card::new(Rank::Four, Suit::Hearts)],
+                },
+                Player {
+                    name: "Charlie".to_string(),
+                    cards: vec![Card::new(Rank::Five, Suit::Spades)],
+                },
+                Player {
+                    name: "David".to_string(),
+                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                },
+            ],
+            0, // Alice's turn
+            2, // 2 consecutive passes
+            vec![
+                Hand::Single(crate::game::cards::SingleHand::new(Card::new(Rank::King, Suit::Hearts))),
+                Hand::Pass,
+                Hand::Pass,
+            ],
+        );
+
+        // Alice passes (making it 3 consecutive passes)
+        let result1 = game.play_cards("Alice", &[]);
+        assert!(result1.is_ok());
+        assert_eq!(game.consecutive_passes, 3);
+
+        // Now Bob should be able to play any card (table is clear)
+        let result2 = game.play_cards("Bob", &[Card::new(Rank::Four, Suit::Hearts)]);
+        assert!(result2.is_ok());
+        assert_eq!(game.consecutive_passes, 0); // Reset after card play
+    }
 }
