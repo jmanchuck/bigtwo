@@ -1,7 +1,7 @@
 // Game history is a list of moves and a list of players (we can derive which player acted based on the history of moves), also has game ID
 
 // The game structure will be passed around to different handlers that can update the state of the game
-use crate::game::cards::{compare_played_cards, Card, HandError, Rank, Suit};
+use crate::game::cards::{compare_played_cards, Card, Hand, HandError, Rank, Suit};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +29,7 @@ pub struct Game {
     players: Vec<Player>, // The first player in the list is assumed to be the starting player
     current_turn: usize,  // The index of the player who is to act
     consecutive_passes: usize,
-    last_played_cards: Vec<Card>,
+    played_hands: Vec<Hand>,
 }
 
 impl Game {
@@ -38,14 +38,14 @@ impl Game {
         players: Vec<Player>,
         current_turn: usize,
         consecutive_passes: usize,
-        last_played_cards: Vec<Card>,
+        played_hands: Vec<Hand>,
     ) -> Self {
         Self {
             id,
             players,
             current_turn,
             consecutive_passes,
-            last_played_cards,
+            played_hands,
         }
     }
 
@@ -83,13 +83,18 @@ impl Game {
             return Err(GameError::InvalidPlayerTurn);
         }
 
-        // Only validate card comparison for non-pass moves and when there are previous cards
-        if !cards.is_empty()
-            && !self.last_played_cards.is_empty()
-            && !compare_played_cards(cards, &self.last_played_cards)
-                .map_err(GameError::HandError)?
-        {
-            return Err(GameError::InvalidPlayedCards);
+        // Create hand from cards
+        let new_hand = Hand::from_cards(cards).map_err(GameError::HandError)?;
+
+        // Only validate card comparison for non-pass moves
+        // Skip validation if 3 consecutive passes have occurred (table is clear)
+        if !cards.is_empty() && self.consecutive_passes < 3 && !self.played_hands.is_empty() {
+            // Find the last non-pass hand to compare against
+            if let Some(last_non_pass_hand) = self.played_hands.iter().rev().find(|h| **h != Hand::Pass) {
+                if !new_hand.can_beat(last_non_pass_hand) {
+                    return Err(GameError::InvalidPlayedCards);
+                }
+            }
         }
 
         if cards.is_empty() {
@@ -97,10 +102,8 @@ impl Game {
                 return Err(GameError::CannotPass);
             }
             self.consecutive_passes += 1;
-            // When 3 consecutive passes occur, clear the last played cards
-            if self.consecutive_passes == 3 {
-                self.last_played_cards = vec![];
-            }
+            // Add pass to played hands (preserve history)
+            self.played_hands.push(Hand::Pass);
         } else {
             // Remove played cards from the player's hand
             let current_player = &mut self.players[self.current_turn];
@@ -111,7 +114,8 @@ impl Game {
             }
             
             self.consecutive_passes = 0;
-            self.last_played_cards = cards.to_vec();
+            // Add the played hand to history
+            self.played_hands.push(new_hand);
             
             // Check if player won (has no cards left)
             if current_player.cards.is_empty() {
@@ -135,14 +139,26 @@ impl Game {
         self.consecutive_passes
     }
 
-    pub fn last_played_cards(&self) -> &[Card] {
-        &self.last_played_cards
+    pub fn last_played_cards(&self) -> Vec<Card> {
+        if let Some(last_hand) = self.played_hands.last() {
+            last_hand.to_cards()
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn get_last_played_hand(&self) -> Option<&Hand> {
+        self.played_hands.last()
+    }
+
+    pub fn played_hands(&self) -> &[Hand] {
+        &self.played_hands
     }
 }
 
 mod tests {
     use super::*;
-    use crate::game::cards::{Rank, Suit};
+    use crate::game::cards::{Hand, Rank, Suit};
 
     #[test]
     fn test_new_game() {
@@ -290,15 +306,23 @@ mod tests {
             vec![],
         );
 
-        // Alice plays both remaining cards
-        let cards_to_play = vec![
-            Card::new(Rank::Three, Suit::Diamonds),
-            Card::new(Rank::Four, Suit::Diamonds),
-        ];
-        let result = game.play_cards("Alice", &cards_to_play);
+        // Alice plays first card
+        let result1 = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result1.is_ok());
+        assert_eq!(result1.unwrap(), false); // Game continues
         
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true); // Alice should win
+        // Now it's Bob's turn, but Alice needs to play to win
+        // Skip Bob's turn by having him pass
+        let pass_result = game.play_cards("Bob", &[]);
+        assert!(pass_result.is_ok());
+        
+        // Alice plays her final card and should win
+        let result2 = game.play_cards("Alice", &[Card::new(Rank::Four, Suit::Diamonds)]);
+        if result2.is_err() {
+            println!("Error on second play: {:?}", result2.as_ref().unwrap_err());
+        }
+        assert!(result2.is_ok());
+        assert_eq!(result2.unwrap(), true); // Alice should win
 
         // Alice should have 0 cards left
         let alice = &game.players[0];
@@ -324,7 +348,7 @@ mod tests {
             ],
             0, // Alice's turn
             0,
-            vec![Card::new(Rank::Five, Suit::Spades)], // Someone played before
+            vec![Hand::from_cards(&[Card::new(Rank::Five, Suit::Spades)]).unwrap()], // Someone played before
         );
 
         // Alice passes (empty cards vector)

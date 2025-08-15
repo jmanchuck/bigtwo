@@ -186,7 +186,7 @@ impl fmt::Display for Card {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SingleHand {
     pub card: Card,
 }
@@ -209,7 +209,7 @@ impl Ord for SingleHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PairHand {
     pub rank: Rank,
     pub high_card: Card, // The higher suit of the pair
@@ -248,7 +248,7 @@ impl Ord for PairHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TripleHand {
     pub rank: Rank,
     pub high_card: Card, // The highest suit of the triple
@@ -283,7 +283,7 @@ impl Ord for TripleHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StraightHand {
     pub cards: Vec<Card>,
     pub high_card: Card,
@@ -309,7 +309,7 @@ impl Ord for StraightHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FlushHand {
     pub cards: Vec<Card>,
     pub suit: Suit,
@@ -344,7 +344,7 @@ impl Ord for FlushHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FullHouseHand {
     pub cards: Vec<Card>,
     pub triple_rank: Rank,
@@ -385,7 +385,7 @@ impl Ord for FullHouseHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FourOfAKindHand {
     pub cards: Vec<Card>,
     pub quad_rank: Rank,
@@ -426,7 +426,7 @@ impl Ord for FourOfAKindHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StraightFlushHand {
     pub cards: Vec<Card>,
     pub suit: Suit,
@@ -461,7 +461,7 @@ impl Ord for StraightFlushHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FiveCardHand {
     Straight(StraightHand),
     Flush(FlushHand),
@@ -594,7 +594,7 @@ impl Ord for FiveCardHand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Hand {
     Pass,
     Single(SingleHand),
@@ -655,6 +655,32 @@ impl Hand {
                 FiveCardHand::FullHouse(_) => "Full House",
                 FiveCardHand::FourOfAKind(_) => "Four of a Kind",
                 FiveCardHand::StraightFlush(_) => "Straight Flush",
+            },
+        }
+    }
+
+    /// Get the cards that make up this hand
+    pub fn to_cards(&self) -> Vec<Card> {
+        match self {
+            Hand::Pass => vec![],
+            Hand::Single(single) => vec![single.card],
+            Hand::Pair(pair) => {
+                // Need to reconstruct the pair from rank and high card
+                // This is limited since we only store the high card
+                vec![pair.high_card]
+            },
+            Hand::Triple(triple) => {
+                // Similar limitation - we only have the high card
+                vec![triple.high_card]
+            },
+            Hand::Five(five) => {
+                match five {
+                    FiveCardHand::Straight(straight) => straight.cards.clone(),
+                    FiveCardHand::Flush(flush) => flush.cards.clone(),
+                    FiveCardHand::FullHouse(full_house) => full_house.cards.clone(),
+                    FiveCardHand::FourOfAKind(four_kind) => four_kind.cards.clone(),
+                    FiveCardHand::StraightFlush(straight_flush) => straight_flush.cards.clone(),
+                }
             },
         }
     }

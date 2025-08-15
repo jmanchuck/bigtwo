@@ -6,7 +6,7 @@ use tracing::info;
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
     game::{
-        cards::{compare_played_cards, Card},
+        cards::{Card, Hand},
         gamemanager::GameManager,
         logic::Game,
     },
@@ -56,17 +56,20 @@ async fn validate_hand(game: &Game, player: &str, cards: &[Card]) -> Result<(), 
 }
 
 async fn validate_move(game: &Game, cards: &[Card]) -> Result<(), RoomEventError> {
-    // Check if the move is valid against the last played cards (skip for passes and first moves)
-    if !game.last_played_cards().is_empty() && !cards.is_empty() {
-        let is_valid = compare_played_cards(cards, game.last_played_cards())
-            .map_err(|e| RoomEventError::HandlerError(format!("Invalid move comparison: {}", e)))?;
-
-        if !is_valid {
-            return Err(RoomEventError::HandlerError(format!(
-                "Move {:?} doesn't beat previous move {:?}",
-                cards,
-                game.last_played_cards()
-            )));
+    // Check if the move is valid against the last played hand (skip for passes and first moves)
+    if !cards.is_empty() {
+        if let Some(last_hand) = game.get_last_played_hand() {
+            // Create hand from new cards
+            let new_hand = Hand::from_cards(cards)
+                .map_err(|e| RoomEventError::HandlerError(format!("Invalid hand: {}", e)))?;
+            
+            if !new_hand.can_beat(last_hand) {
+                return Err(RoomEventError::HandlerError(format!(
+                    "Move {:?} doesn't beat previous move {:?}",
+                    cards,
+                    last_hand.to_cards()
+                )));
+            }
         }
     }
 
@@ -255,7 +258,7 @@ impl GameEventRoomSubscriber {
 mod tests {
     use super::*;
     use crate::game::{
-        cards::{Card, Rank, Suit},
+        cards::{Card, Hand, Rank, Suit},
         logic::{Game, Player},
     };
 
@@ -373,7 +376,7 @@ mod tests {
             create_test_players(),
             0,
             0,
-            vec![Card::new(Rank::Three, Suit::Diamonds)],
+            vec![Hand::from_cards(&[Card::new(Rank::Three, Suit::Diamonds)]).unwrap()],
         );
         let result = validate_move(&game, &[Card::new(Rank::Three, Suit::Spades)]).await;
 
