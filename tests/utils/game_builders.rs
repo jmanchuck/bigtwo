@@ -105,7 +105,7 @@ impl GameBuilder {
             .iter()
             .map(|player| (player.name.clone(), player.cards.clone()))
             .collect();
-        
+
         let game = Game::new(
             "room-123".to_string(),
             players,

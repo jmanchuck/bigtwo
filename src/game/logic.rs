@@ -101,7 +101,9 @@ impl Game {
         // Skip validation if 3 consecutive passes have occurred (table is clear)
         if !cards.is_empty() && self.consecutive_passes < 3 && !self.played_hands.is_empty() {
             // Find the last non-pass hand to compare against
-            if let Some(last_non_pass_hand) = self.played_hands.iter().rev().find(|h| **h != Hand::Pass) {
+            if let Some(last_non_pass_hand) =
+                self.played_hands.iter().rev().find(|h| **h != Hand::Pass)
+            {
                 if !new_hand.can_beat(last_non_pass_hand) {
                     return Err(GameError::InvalidPlayedCards);
                 }
@@ -123,7 +125,7 @@ impl Game {
                     return Err(GameError::CardNotOwned(*card));
                 }
             }
-            
+
             // Remove played cards from the player's hand
             let current_player = &mut self.players[self.current_turn];
             for card in cards {
@@ -131,11 +133,11 @@ impl Game {
                     current_player.cards.remove(pos);
                 }
             }
-            
+
             self.consecutive_passes = 0;
             // Add the played hand to history
             self.played_hands.push(new_hand);
-            
+
             // Check if player won (has no cards left)
             if current_player.cards.is_empty() {
                 return Ok(true); // Player won
@@ -275,14 +277,16 @@ mod tests {
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
         let result = game.play_cards("Alice", &cards_to_play);
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false); // Game should continue, Alice didn't win
 
         // Alice should have 2 cards left
         let alice = &game.players[0];
         assert_eq!(alice.cards.len(), 2);
-        assert!(!alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(!alice
+            .cards
+            .contains(&Card::new(Rank::Three, Suit::Diamonds)));
         assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
         assert!(alice.cards.contains(&Card::new(Rank::Five, Suit::Spades)));
     }
@@ -311,7 +315,7 @@ mod tests {
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
         let result = game.play_cards("Alice", &cards_to_play);
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true); // Alice should win
 
@@ -349,12 +353,12 @@ mod tests {
         let result1 = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result1.is_ok());
         assert_eq!(result1.unwrap(), false); // Game continues
-        
+
         // Now it's Bob's turn, but Alice needs to play to win
         // Skip Bob's turn by having him pass
         let pass_result = game.play_cards("Bob", &[]);
         assert!(pass_result.is_ok());
-        
+
         // Alice plays her final card and should win
         let result2 = game.play_cards("Alice", &[Card::new(Rank::Four, Suit::Diamonds)]);
         if result2.is_err() {
@@ -395,14 +399,16 @@ mod tests {
 
         // Alice passes (empty cards vector)
         let result = game.play_cards("Alice", &[]);
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false); // Game continues
 
         // Alice should still have 2 cards
         let alice = &game.players[0];
         assert_eq!(alice.cards.len(), 2);
-        assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice
+            .cards
+            .contains(&Card::new(Rank::Three, Suit::Diamonds)));
         assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }
 
@@ -434,7 +440,7 @@ mod tests {
         // Try to play a card Alice doesn't have
         let cards_to_play = vec![Card::new(Rank::Ace, Suit::Spades)];
         let result = game.play_cards("Alice", &cards_to_play);
-        
+
         // Should now return an error for card not owned
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), GameError::CardNotOwned(_)));
@@ -442,7 +448,9 @@ mod tests {
         // Alice should still have 2 cards (invalid card wasn't in her hand anyway)
         let alice = &game.players[0];
         assert_eq!(alice.cards.len(), 2);
-        assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice
+            .cards
+            .contains(&Card::new(Rank::Three, Suit::Diamonds)));
         assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }
 
@@ -531,7 +539,9 @@ mod tests {
             players.clone(),
             0, // Alice's turn
             0,
-            vec![Hand::Single(crate::game::cards::SingleHand::new(Card::new(Rank::King, Suit::Hearts)))], // Previous player played King of Hearts
+            vec![Hand::Single(crate::game::cards::SingleHand::new(
+                Card::new(Rank::King, Suit::Hearts),
+            ))], // Previous player played King of Hearts
             create_starting_hands(&players),
         );
 
@@ -568,19 +578,21 @@ mod tests {
 
         // Try to play a card Alice doesn't have (Ace of Spades)
         let result = game.play_cards("Alice", &[Card::new(Rank::Ace, Suit::Spades)]);
-        
+
         // Should now return an error for card not owned
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), GameError::CardNotOwned(_)));
-        
+
         // Alice should still have her original 2 cards
         let alice = &game.players[0];
         assert_eq!(alice.cards.len(), 2);
-        assert!(alice.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)));
+        assert!(alice
+            .cards
+            .contains(&Card::new(Rank::Three, Suit::Diamonds)));
         assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }
 
-    #[test] 
+    #[test]
     fn test_invalid_hand_construction() {
         let players = vec![
             Player {
@@ -606,11 +618,14 @@ mod tests {
         );
 
         // Try to play an invalid pair (different ranks)
-        let result = game.play_cards("Alice", &[
-            Card::new(Rank::Three, Suit::Diamonds),
-            Card::new(Rank::Four, Suit::Hearts),
-        ]);
-        
+        let result = game.play_cards(
+            "Alice",
+            &[
+                Card::new(Rank::Three, Suit::Diamonds),
+                Card::new(Rank::Four, Suit::Hearts),
+            ],
+        );
+
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), GameError::HandError(_)));
     }
@@ -642,7 +657,10 @@ mod tests {
             0, // Alice's turn
             2, // 2 consecutive passes
             vec![
-                Hand::Single(crate::game::cards::SingleHand::new(Card::new(Rank::King, Suit::Hearts))),
+                Hand::Single(crate::game::cards::SingleHand::new(Card::new(
+                    Rank::King,
+                    Suit::Hearts,
+                ))),
                 Hand::Pass,
                 Hand::Pass,
             ],
@@ -683,7 +701,12 @@ mod tests {
 
         // Each player should have 13 starting cards
         for (player_name, cards) in starting_hands {
-            assert_eq!(cards.len(), 13, "Player {} should have 13 starting cards", player_name);
+            assert_eq!(
+                cards.len(),
+                13,
+                "Player {} should have 13 starting cards",
+                player_name
+            );
         }
 
         // Starting hands should match the sorted cards each player received

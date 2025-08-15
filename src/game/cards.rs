@@ -227,14 +227,14 @@ impl PairHand {
         } else {
             card2
         };
-        
+
         // Store cards in a consistent order: lower suit first, higher suit second
         let cards = if card1.suit < card2.suit {
             [card1, card2]
         } else {
             [card2, card1]
         };
-        
+
         Ok(Self {
             rank: card1.rank,
             cards,
@@ -272,11 +272,11 @@ impl TripleHand {
         }
 
         let high_card = *[card1, card2, card3].iter().max().unwrap();
-        
+
         // Store cards in sorted order by suit
         let mut cards = [card1, card2, card3];
         cards.sort_by_key(|card| card.suit);
-        
+
         Ok(Self {
             rank: card1.rank,
             cards,
@@ -684,19 +684,17 @@ impl Hand {
             Hand::Pair(pair) => {
                 // Return all cards in the pair
                 pair.cards.to_vec()
-            },
+            }
             Hand::Triple(triple) => {
                 // Return all cards in the triple
                 triple.cards.to_vec()
-            },
-            Hand::Five(five) => {
-                match five {
-                    FiveCardHand::Straight(straight) => straight.cards.clone(),
-                    FiveCardHand::Flush(flush) => flush.cards.clone(),
-                    FiveCardHand::FullHouse(full_house) => full_house.cards.clone(),
-                    FiveCardHand::FourOfAKind(four_kind) => four_kind.cards.clone(),
-                    FiveCardHand::StraightFlush(straight_flush) => straight_flush.cards.clone(),
-                }
+            }
+            Hand::Five(five) => match five {
+                FiveCardHand::Straight(straight) => straight.cards.clone(),
+                FiveCardHand::Flush(flush) => flush.cards.clone(),
+                FiveCardHand::FullHouse(full_house) => full_house.cards.clone(),
+                FiveCardHand::FourOfAKind(four_kind) => four_kind.cards.clone(),
+                FiveCardHand::StraightFlush(straight_flush) => straight_flush.cards.clone(),
             },
         }
     }

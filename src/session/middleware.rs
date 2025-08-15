@@ -35,12 +35,10 @@ pub async fn jwt_auth(
         })?;
 
     // Extract Bearer token
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| {
-            warn!("Invalid Authorization header format (expected Bearer token)");
-            AppError::Unauthorized("Invalid authorization header format".to_string())
-        })?;
+    let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+        warn!("Invalid Authorization header format (expected Bearer token)");
+        AppError::Unauthorized("Invalid authorization header format".to_string())
+    })?;
 
     info!("Extracted token from Authorization Bearer header");
 

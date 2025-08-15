@@ -178,7 +178,10 @@ pub async fn websocket_handler(
         })?;
 
     // Validate JWT token and get username from claims
-    let claims = app_state.session_service.validate_session(jwt_token).await?;
+    let claims = app_state
+        .session_service
+        .validate_session(jwt_token)
+        .await?;
     let username = claims.username;
 
     info!(

@@ -17,7 +17,6 @@ pub struct GameEventRoomSubscriber {
     event_bus: EventBus,
 }
 
-
 #[async_trait]
 impl RoomEventHandler for GameEventRoomSubscriber {
     async fn handle_room_event(
@@ -155,7 +154,8 @@ impl GameEventRoomSubscriber {
                 )))?;
 
         // Execute the move and check if player won
-        let player_won = game.play_cards(player, cards)
+        let player_won = game
+            .play_cards(player, cards)
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to play cards: {}", e)))?;
 
         // Update the game in the manager
@@ -232,7 +232,7 @@ mod tests {
             .iter()
             .map(|player| (player.name.clone(), player.cards.clone()))
             .collect();
-        
+
         Game::new(
             "test_room".to_string(),
             players,
@@ -242,7 +242,6 @@ mod tests {
             starting_hands,
         )
     }
-
 
     #[tokio::test]
     async fn test_game_room_subscriber_new() {
@@ -339,10 +338,7 @@ mod tests {
             .handle_player_played_move("test_room", "Bob", &[Card::new(Rank::Six, Suit::Clubs)])
             .await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid player"));
+        assert!(result.unwrap_err().to_string().contains("Invalid player"));
     }
 
     #[tokio::test]
@@ -409,7 +405,7 @@ mod tests {
             .iter()
             .map(|player| (player.name.clone(), player.cards.clone()))
             .collect();
-        
+
         let test_game = Game::new(
             "test_room".to_string(),
             players,
@@ -432,13 +428,17 @@ mod tests {
                 &[Card::new(Rank::Three, Suit::Diamonds)],
             )
             .await;
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true); // Should return true indicating player won
 
         // Verify Alice has no cards left
         let updated_game = game_manager.get_game("test_room").await.unwrap();
-        let alice = updated_game.players().iter().find(|p| p.name == "Alice").unwrap();
+        let alice = updated_game
+            .players()
+            .iter()
+            .find(|p| p.name == "Alice")
+            .unwrap();
         assert_eq!(alice.cards.len(), 0);
 
         // Note: In a real integration test, we would also verify that the GameWon event was emitted,
@@ -469,7 +469,7 @@ mod tests {
             .iter()
             .map(|player| (player.name.clone(), player.cards.clone()))
             .collect();
-        
+
         let test_game = Game::new(
             "test_room".to_string(),
             players,
@@ -492,13 +492,17 @@ mod tests {
                 &[Card::new(Rank::Three, Suit::Diamonds)],
             )
             .await;
-        
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false); // Should return false indicating game continues
 
         // Verify Alice has one card left
         let updated_game = game_manager.get_game("test_room").await.unwrap();
-        let alice = updated_game.players().iter().find(|p| p.name == "Alice").unwrap();
+        let alice = updated_game
+            .players()
+            .iter()
+            .find(|p| p.name == "Alice")
+            .unwrap();
         assert_eq!(alice.cards.len(), 1);
         assert!(alice.cards.contains(&Card::new(Rank::Four, Suit::Hearts)));
     }

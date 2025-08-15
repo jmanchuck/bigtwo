@@ -180,9 +180,6 @@ impl WebSocketMessage {
     /// Create a GAME_WON message
     pub fn game_won(winner: String) -> Self {
         let payload = GameWonPayload { winner };
-        Self::new(
-            MessageType::GameWon,
-            serde_json::to_value(payload).unwrap(),
-        )
+        Self::new(MessageType::GameWon, serde_json::to_value(payload).unwrap())
     }
 }

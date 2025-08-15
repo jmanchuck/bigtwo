@@ -228,7 +228,7 @@ pub mod test_utils {
             let session_service = self
                 .session_service
                 .unwrap_or_else(|| Arc::new(SessionService::new(session_repository.clone())));
-            
+
             AppState {
                 session_repository,
                 session_service,
