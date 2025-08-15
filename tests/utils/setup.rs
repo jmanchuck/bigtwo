@@ -7,6 +7,7 @@ use bigtwo::{
     room::{
         models::RoomModel,
         repository::{InMemoryRoomRepository, RoomRepository},
+        service::RoomService,
     },
     websockets::{WebSocketRoomSubscriber, WebsocketReceiveHandler},
 };
@@ -89,8 +90,9 @@ impl TestSetupBuilder {
         let _game_subscription_handle = game_subscription.start().await;
 
         // Create websocket subscriber to handle message broadcasting
+        let room_service = Arc::new(RoomService::new(repo.clone()));
         let output_subscriber = WebSocketRoomSubscriber::new(
-            repo.clone(),
+            room_service,
             mock_conn_manager.clone(),
             game_manager.clone(),
             event_bus.clone(),

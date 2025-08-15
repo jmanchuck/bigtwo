@@ -47,6 +47,7 @@ impl RoomService {
         Ok(room_response)
     }
 
+    /// Gets room details as a response object for API endpoints
     #[instrument(skip(self))]
     pub async fn get_room_details(&self, room_id: String) -> Result<RoomResponse, AppError> {
         let room = self
@@ -61,6 +62,13 @@ impl RoomService {
             status: room.status.clone(),
             player_count: room.get_player_count(),
         })
+    }
+
+    /// Gets the full room model for internal use (WebSocket handlers, etc.)
+    #[instrument(skip(self))]
+    pub async fn get_room(&self, room_id: &str) -> Result<Option<RoomModel>, AppError> {
+        debug!(room_id = %room_id, "Getting room model");
+        self.repository.get_room(room_id).await
     }
 
     /// Lists all available rooms

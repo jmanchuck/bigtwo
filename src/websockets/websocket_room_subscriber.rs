@@ -6,7 +6,7 @@ use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler, RoomSubscription},
     game::{Card, Game, GameEventRoomSubscriber, GameManager},
     room::{
-        repository::{LeaveRoomResult, RoomRepository},
+        repository::LeaveRoomResult,
         service::RoomService,
     },
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
@@ -19,7 +19,7 @@ use crate::{
 /// 2. Converting events to WebSocket messages  
 /// 3. Sending to all connected players in the room
 pub struct WebSocketRoomSubscriber {
-    room_repository: Arc<dyn RoomRepository + Send + Sync>,
+    room_service: Arc<RoomService>,
     connection_manager: Arc<dyn ConnectionManager>,
     game_manager: Arc<GameManager>,
     event_bus: EventBus,
@@ -84,13 +84,13 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
 
 impl WebSocketRoomSubscriber {
     pub fn new(
-        room_repository: Arc<dyn RoomRepository + Send + Sync>,
+        room_service: Arc<RoomService>,
         connection_manager: Arc<dyn ConnectionManager>,
         game_manager: Arc<GameManager>,
         event_bus: crate::event::EventBus,
     ) -> Self {
         Self {
-            room_repository,
+            room_service,
             connection_manager,
             game_manager,
             event_bus,
@@ -102,7 +102,7 @@ impl WebSocketRoomSubscriber {
 
         // Query current room state for accurate player list
         let room = self
-            .room_repository
+            .room_service
             .get_room(room_id)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?
@@ -143,7 +143,7 @@ impl WebSocketRoomSubscriber {
 
         // Query current room state for accurate player list
         let room = self
-            .room_repository
+            .room_service
             .get_room(room_id)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?;
@@ -208,7 +208,7 @@ impl WebSocketRoomSubscriber {
 
         // Query current room state
         let room = self
-            .room_repository
+            .room_service
             .get_room(room_id)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?;
@@ -259,7 +259,7 @@ impl WebSocketRoomSubscriber {
 
         // Get current room state to find all players
         let room = self
-            .room_repository
+            .room_service
             .get_room(room_id)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?;
@@ -308,7 +308,7 @@ impl WebSocketRoomSubscriber {
 
         // Get room state before leaving to detect host changes
         let room_before = self
-            .room_repository
+            .room_service
             .get_room(room_id)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?;
@@ -319,8 +319,7 @@ impl WebSocketRoomSubscriber {
             .unwrap_or(false);
 
         // Perform the leave operation using room service
-        let room_service = RoomService::new(Arc::clone(&self.room_repository));
-        match room_service
+        match self.room_service
             .leave_room(room_id.to_string(), player_name.to_string())
             .await
         {
@@ -418,7 +417,7 @@ impl WebSocketRoomSubscriber {
 
         // Check if the host is the current host
         let room = self
-            .room_repository
+            .room_service
             .get_room(room_id)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?
