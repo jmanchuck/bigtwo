@@ -8,6 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::room::repository::RoomRepository;
+use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
 use crate::session::service::SessionService;
 use crate::websockets::ConnectionManager;
@@ -19,6 +20,7 @@ pub struct AppState {
     pub session_repository: Arc<dyn SessionRepository + Send + Sync>,
     pub session_service: Arc<SessionService>,
     pub room_repository: Arc<dyn RoomRepository + Send + Sync>,
+    pub room_service: Arc<RoomService>,
     pub event_bus: EventBus,
     pub connection_manager: Arc<dyn ConnectionManager>,
     pub game_manager: Arc<GameManager>,
@@ -29,6 +31,7 @@ impl AppState {
         session_repository: Arc<dyn SessionRepository + Send + Sync>,
         session_service: Arc<SessionService>,
         room_repository: Arc<dyn RoomRepository + Send + Sync>,
+        room_service: Arc<RoomService>,
         event_bus: EventBus,
         connection_manager: Arc<dyn ConnectionManager>,
         game_manager: Arc<GameManager>,
@@ -37,6 +40,7 @@ impl AppState {
             session_repository,
             session_service,
             room_repository,
+            room_service,
             event_bus,
             connection_manager,
             game_manager,
@@ -178,6 +182,7 @@ pub mod test_utils {
         session_repository: Option<Arc<dyn SessionRepository + Send + Sync>>,
         session_service: Option<Arc<SessionService>>,
         room_repository: Option<Arc<dyn RoomRepository + Send + Sync>>,
+        room_service: Option<Arc<RoomService>>,
         connection_manager: Option<Arc<dyn ConnectionManager>>,
         game_manager: Option<Arc<GameManager>>,
     }
@@ -188,6 +193,7 @@ pub mod test_utils {
                 session_repository: None,
                 session_service: None,
                 room_repository: None,
+                room_service: None,
                 connection_manager: None,
                 game_manager: None,
             }
@@ -211,6 +217,11 @@ pub mod test_utils {
             self
         }
 
+        pub fn with_room_service(mut self, service: Arc<RoomService>) -> Self {
+            self.room_service = Some(service);
+            self
+        }
+
         pub fn with_connection_manager(mut self, manager: Arc<dyn ConnectionManager>) -> Self {
             self.connection_manager = Some(manager);
             self
@@ -228,13 +239,18 @@ pub mod test_utils {
             let session_service = self
                 .session_service
                 .unwrap_or_else(|| Arc::new(SessionService::new(session_repository.clone())));
+            let room_repository = self
+                .room_repository
+                .unwrap_or_else(|| Arc::new(DummyRoomRepository));
+            let room_service = self
+                .room_service
+                .unwrap_or_else(|| Arc::new(RoomService::new(room_repository.clone())));
 
             AppState {
                 session_repository,
                 session_service,
-                room_repository: self
-                    .room_repository
-                    .unwrap_or_else(|| Arc::new(DummyRoomRepository)),
+                room_repository,
+                room_service,
                 event_bus: EventBus::new(),
                 connection_manager: self
                     .connection_manager

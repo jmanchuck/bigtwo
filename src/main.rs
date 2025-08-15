@@ -12,6 +12,7 @@ use axum::{
     Router,
 };
 use room::repository::InMemoryRoomRepository;
+use room::service::RoomService;
 use session::repository::{
     InMemorySessionRepository, PostgresSessionRepository, SessionRepository,
 };
@@ -62,6 +63,7 @@ async fn main() {
 
     let session_service = Arc::new(SessionService::new(session_repository.clone()));
     let room_repository = Arc::new(InMemoryRoomRepository::new());
+    let room_service = Arc::new(RoomService::new(room_repository.clone()));
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
     let game_manager = Arc::new(GameManager::new());
@@ -70,6 +72,7 @@ async fn main() {
         session_repository,
         session_service,
         room_repository,
+        room_service,
         event_bus,
         connection_manager,
         game_manager,
