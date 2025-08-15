@@ -7,7 +7,6 @@ use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::room::repository::RoomRepository;
 use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
 use crate::session::service::SessionService;
@@ -19,7 +18,6 @@ use crate::{event::EventBus, game::GameManager};
 pub struct AppState {
     pub session_repository: Arc<dyn SessionRepository + Send + Sync>,
     pub session_service: Arc<SessionService>,
-    pub room_repository: Arc<dyn RoomRepository + Send + Sync>,
     pub room_service: Arc<RoomService>,
     pub event_bus: EventBus,
     pub connection_manager: Arc<dyn ConnectionManager>,
@@ -30,7 +28,6 @@ impl AppState {
     pub fn new(
         session_repository: Arc<dyn SessionRepository + Send + Sync>,
         session_service: Arc<SessionService>,
-        room_repository: Arc<dyn RoomRepository + Send + Sync>,
         room_service: Arc<RoomService>,
         event_bus: EventBus,
         connection_manager: Arc<dyn ConnectionManager>,
@@ -39,7 +36,6 @@ impl AppState {
         Self {
             session_repository,
             session_service,
-            room_repository,
             room_service,
             event_bus,
             connection_manager,
@@ -94,6 +90,7 @@ impl IntoResponse for AppError {
 pub mod test_utils {
     use super::*;
     use crate::room::models::RoomModel;
+    use crate::room::repository::RoomRepository;
     use crate::session::models::SessionModel;
     use async_trait::async_trait;
 
@@ -181,7 +178,6 @@ pub mod test_utils {
     pub struct AppStateBuilder {
         session_repository: Option<Arc<dyn SessionRepository + Send + Sync>>,
         session_service: Option<Arc<SessionService>>,
-        room_repository: Option<Arc<dyn RoomRepository + Send + Sync>>,
         room_service: Option<Arc<RoomService>>,
         connection_manager: Option<Arc<dyn ConnectionManager>>,
         game_manager: Option<Arc<GameManager>>,
@@ -192,7 +188,6 @@ pub mod test_utils {
             Self {
                 session_repository: None,
                 session_service: None,
-                room_repository: None,
                 room_service: None,
                 connection_manager: None,
                 game_manager: None,
@@ -212,13 +207,15 @@ pub mod test_utils {
             self
         }
 
-        pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
-            self.room_repository = Some(repo);
+        pub fn with_room_service(mut self, service: Arc<RoomService>) -> Self {
+            self.room_service = Some(service);
             self
         }
 
-        pub fn with_room_service(mut self, service: Arc<RoomService>) -> Self {
-            self.room_service = Some(service);
+        /// Convenience method for tests that want to provide a room repository
+        /// This creates a RoomService with the given repository
+        pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
+            self.room_service = Some(Arc::new(RoomService::new(repo)));
             self
         }
 
@@ -239,17 +236,13 @@ pub mod test_utils {
             let session_service = self
                 .session_service
                 .unwrap_or_else(|| Arc::new(SessionService::new(session_repository.clone())));
-            let room_repository = self
-                .room_repository
-                .unwrap_or_else(|| Arc::new(DummyRoomRepository));
             let room_service = self
                 .room_service
-                .unwrap_or_else(|| Arc::new(RoomService::new(room_repository.clone())));
+                .unwrap_or_else(|| Arc::new(RoomService::new(Arc::new(DummyRoomRepository))));
 
             AppState {
                 session_repository,
                 session_service,
-                room_repository,
                 room_service,
                 event_bus: EventBus::new(),
                 connection_manager: self

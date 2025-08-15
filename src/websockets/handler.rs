@@ -190,8 +190,8 @@ pub async fn websocket_handler(
         "WebSocket authentication successful"
     );
 
-    // Verify room exists using repository
-    let room_option = app_state.room_repository.get_room(&room_id).await?;
+    // Verify room exists using room service
+    let room_option = app_state.room_service.get_room(&room_id).await?;
     if room_option.is_none() {
         warn!(
             room_id = %room_id,
@@ -233,7 +233,7 @@ async fn handle_websocket_connection(
         .await;
 
     // Send initial room state to the newly connected player
-    if let Ok(Some(room)) = app_state.room_repository.get_room(&room_id).await {
+    if let Ok(Some(room)) = app_state.room_service.get_room(&room_id).await {
         let initial_message =
             crate::websockets::messages::WebSocketMessage::players_list(room.players);
         if let Ok(message_json) = serde_json::to_string(&initial_message) {

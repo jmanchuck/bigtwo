@@ -5,10 +5,7 @@ use axum::{
 use std::sync::Arc;
 use tracing::{info, instrument};
 
-use super::{
-    service::RoomService,
-    types::{JoinRoomRequest, RoomCreateRequest, RoomResponse},
-};
+use super::types::{JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
     event::{RoomEvent, RoomSubscription},
     session::SessionClaims,
@@ -27,13 +24,13 @@ pub async fn create_room(
 ) -> Result<Json<RoomResponse>, AppError> {
     info!(host_name = %request.host_name, "Creating new room");
 
-    // Use injected repository from app state
-    let service = RoomService::new(Arc::clone(&state.room_repository));
+    // Use injected service from app state
+    let service = Arc::clone(&state.room_service);
     let room = service.create_room(request).await?;
 
     // Start WebSocket room subscription for this room
     let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
-        Arc::clone(&state.room_repository),
+        Arc::clone(&state.room_service),
         Arc::clone(&state.connection_manager),
         Arc::clone(&state.game_manager),
         state.event_bus.clone(),
@@ -68,8 +65,8 @@ pub async fn list_rooms(
 ) -> Result<Json<Vec<RoomResponse>>, AppError> {
     info!("Listing all rooms");
 
-    // Use injected repository from app state
-    let service = RoomService::new(Arc::clone(&state.room_repository));
+    // Use injected service from app state
+    let service = Arc::clone(&state.room_service);
     let rooms = service.list_rooms().await?;
 
     info!(room_count = rooms.len(), "Rooms listed successfully");
@@ -97,7 +94,7 @@ pub async fn join_room(
         "Player joining room"
     );
 
-    let service = RoomService::new(Arc::clone(&state.room_repository));
+    let service = Arc::clone(&state.room_service);
 
     // Join the room (business logic)
     let room = service
@@ -131,7 +128,7 @@ pub async fn get_room_details(
     Path(room_id): Path<String>,
 ) -> Result<Json<RoomResponse>, AppError> {
     // Get room without requiring auth - just returns room info
-    let service = RoomService::new(Arc::clone(&state.room_repository));
+    let service = Arc::clone(&state.room_service);
     let room = service.get_room_details(room_id.clone()).await?;
 
     Ok(Json(room))
@@ -336,7 +333,7 @@ mod tests {
             .build();
 
         // Create some rooms first using the service directly
-        let service = RoomService::new(room_repository);
+        let service = Arc::clone(&app_state.room_service);
         let request1 = RoomCreateRequest {
             host_name: "host-1".to_string(),
         };
@@ -402,7 +399,7 @@ mod tests {
             .build();
 
         // Create one room using the service directly
-        let service = RoomService::new(room_repository);
+        let service = Arc::clone(&app_state.room_service);
         let request = RoomCreateRequest {
             host_name: "single-host".to_string(),
         };
@@ -443,7 +440,7 @@ mod tests {
             .build();
 
         // Create a room first using the service directly
-        let service = RoomService::new(room_repository);
+        let service = Arc::clone(&app_state.room_service);
         let request = RoomCreateRequest {
             host_name: "test-host".to_string(),
         };
@@ -518,7 +515,7 @@ mod tests {
             .build();
 
         // Create a room and fill it to capacity using the service directly
-        let service = RoomService::new(room_repository);
+        let service = Arc::clone(&app_state.room_service);
         let request = RoomCreateRequest {
             host_name: "test-host".to_string(),
         };
@@ -557,7 +554,7 @@ mod tests {
             .build();
 
         // Create a room first using the service directly
-        let service = RoomService::new(room_repository);
+        let service = Arc::clone(&app_state.room_service);
         let request = RoomCreateRequest {
             host_name: "test-host".to_string(),
         };
