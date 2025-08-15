@@ -23,6 +23,8 @@ pub enum GameError {
     CardNotOwned(Card),
     #[error("Hand construction error")]
     HandError(HandError),
+    #[error("First turn must include the 3 of diamonds")]
+    FirstTurnMustIncludeThreeOfDiamonds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +98,14 @@ impl Game {
 
         // Create hand from cards
         let new_hand = Hand::from_cards(cards).map_err(GameError::HandError)?;
+
+        // First turn validation: must include 3 of diamonds
+        if self.played_hands.is_empty() && !cards.is_empty() {
+            let three_of_diamonds = Card::new(Rank::Three, Suit::Diamonds);
+            if !cards.contains(&three_of_diamonds) {
+                return Err(GameError::FirstTurnMustIncludeThreeOfDiamonds);
+            }
+        }
 
         // Only validate card comparison for non-pass moves
         // Skip validation if 3 consecutive passes have occurred (table is clear)
@@ -715,5 +725,145 @@ mod tests {
             // The current cards might be different due to the rotation, but starting hands preserve original distribution
             assert_eq!(starting_cards.len(), 13);
         }
+    }
+
+    #[test]
+    fn test_first_turn_must_include_three_of_diamonds() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Four, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![], // No hands played yet - first turn
+            create_starting_hands(&players),
+        );
+
+        // Try to play without 3 of diamonds - should fail
+        let result = game.play_cards("Alice", &[Card::new(Rank::Four, Suit::Hearts)]);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            GameError::FirstTurnMustIncludeThreeOfDiamonds
+        ));
+    }
+
+    #[test]
+    fn test_first_turn_with_three_of_diamonds_succeeds() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Four, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![], // No hands played yet - first turn
+            create_starting_hands(&players),
+        );
+
+        // Play with 3 of diamonds - should succeed
+        let result = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result.is_ok());
+        assert_eq!(game.current_player_turn(), "Bob"); // Turn should advance
+        assert_eq!(game.played_hands().len(), 1); // Hand should be recorded
+    }
+
+    #[test]
+    fn test_first_turn_with_three_of_diamonds_in_combination_succeeds() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Three, Suit::Hearts),
+                    Card::new(Rank::Four, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![], // No hands played yet - first turn
+            create_starting_hands(&players),
+        );
+
+        // Play a pair that includes 3 of diamonds - should succeed
+        let result = game.play_cards(
+            "Alice",
+            &[
+                Card::new(Rank::Three, Suit::Diamonds),
+                Card::new(Rank::Three, Suit::Hearts),
+            ],
+        );
+        assert!(result.is_ok());
+        assert_eq!(game.current_player_turn(), "Bob"); // Turn should advance
+        assert_eq!(game.played_hands().len(), 1); // Hand should be recorded
+    }
+
+    #[test]
+    fn test_second_turn_does_not_require_three_of_diamonds() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Four, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![], // No hands played yet - first turn
+            create_starting_hands(&players),
+        );
+
+        // Alice plays 3 of diamonds successfully
+        let result1 = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result1.is_ok());
+
+        // Bob should be able to play any valid card (not requiring 3 of diamonds)
+        let result2 = game.play_cards("Bob", &[Card::new(Rank::Six, Suit::Clubs)]);
+        assert!(result2.is_ok());
+        assert_eq!(game.current_player_turn(), "Alice"); // Turn should advance back to Alice
     }
 }

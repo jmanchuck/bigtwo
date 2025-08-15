@@ -346,3 +346,39 @@ async fn test_first_player_can_change_combination_type_after_all_pass() {
         .with_player("alice")
         .with_cards(vec!["JC", "JH"]);
 }
+
+#[tokio::test]
+async fn test_first_turn_must_include_three_of_diamonds() {
+    let setup = TestSetupBuilder::new().with_two_players().build().await;
+    let first_player = GameBuilder::new()
+        .with_simple_two_player_game()
+        .build_with_setup(&setup)
+        .await;
+
+    // Try to play without 3 of diamonds on first turn - should fail
+    setup.send_move(&first_player, vec!["4H"]).await;
+
+    // No messages should be sent since the move is invalid
+    MessageAssertion::for_all_players(&setup)
+        .received_no_messages()
+        .await;
+}
+
+#[tokio::test]
+async fn test_first_turn_with_three_of_diamonds_succeeds() {
+    let setup = TestSetupBuilder::new().with_two_players().build().await;
+    let first_player = GameBuilder::new()
+        .with_simple_two_player_game()
+        .build_with_setup(&setup)
+        .await;
+
+    // Play with 3 of diamonds on first turn - should succeed
+    setup.send_move(&first_player, vec!["3D"]).await;
+
+    // All players should receive the move
+    MessageAssertion::for_all_players(&setup)
+        .received_message_type(MessageType::MovePlayed)
+        .await
+        .with_player(&first_player)
+        .with_cards(vec!["3D"]);
+}
