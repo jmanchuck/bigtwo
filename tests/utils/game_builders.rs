@@ -101,12 +101,18 @@ impl GameBuilder {
 
         let first_player_name = players[first_player_index].name.clone();
 
+        let starting_hands = players
+            .iter()
+            .map(|player| (player.name.clone(), player.cards.clone()))
+            .collect();
+        
         let game = Game::new(
             "room-123".to_string(),
             players,
             first_player_index,
             0,
             vec![],
+            starting_hands,
         );
         setup
             .game_manager

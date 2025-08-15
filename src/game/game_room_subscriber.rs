@@ -227,12 +227,19 @@ mod tests {
     }
 
     fn create_test_game() -> Game {
+        let players = create_test_players();
+        let starting_hands = players
+            .iter()
+            .map(|player| (player.name.clone(), player.cards.clone()))
+            .collect();
+        
         Game::new(
             "test_room".to_string(),
-            create_test_players(),
+            players,
             0,      // Alice's turn
             0,      // No consecutive passes
             vec![], // No last played cards
+            starting_hands,
         )
     }
 
@@ -388,21 +395,28 @@ mod tests {
         let subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus.clone());
 
         // Create a test game where Alice has only one card left
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                cards: vec![Card::new(Rank::Three, Suit::Diamonds)], // Only one card
+            },
+            Player {
+                name: "Bob".to_string(),
+                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+            },
+        ];
+        let starting_hands = players
+            .iter()
+            .map(|player| (player.name.clone(), player.cards.clone()))
+            .collect();
+        
         let test_game = Game::new(
             "test_room".to_string(),
-            vec![
-                Player {
-                    name: "Alice".to_string(),
-                    cards: vec![Card::new(Rank::Three, Suit::Diamonds)], // Only one card
-                },
-                Player {
-                    name: "Bob".to_string(),
-                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
-                },
-            ],
+            players,
             0, // Alice's turn
             0,
             vec![],
+            starting_hands,
         );
 
         game_manager
@@ -438,24 +452,31 @@ mod tests {
         let subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus.clone());
 
         // Create a test game where Alice has multiple cards
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Four, Suit::Hearts), // Multiple cards
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+            },
+        ];
+        let starting_hands = players
+            .iter()
+            .map(|player| (player.name.clone(), player.cards.clone()))
+            .collect();
+        
         let test_game = Game::new(
             "test_room".to_string(),
-            vec![
-                Player {
-                    name: "Alice".to_string(),
-                    cards: vec![
-                        Card::new(Rank::Three, Suit::Diamonds),
-                        Card::new(Rank::Four, Suit::Hearts), // Multiple cards
-                    ],
-                },
-                Player {
-                    name: "Bob".to_string(),
-                    cards: vec![Card::new(Rank::Six, Suit::Clubs)],
-                },
-            ],
+            players,
             0, // Alice's turn
             0,
             vec![],
+            starting_hands,
         );
 
         game_manager
