@@ -145,9 +145,9 @@ pub mod test_utils {
             Ok(crate::room::repository::JoinRoomResult::Success(
                 RoomModel {
                     id: "dummy-room".to_string(),
-                    host_name: "dummy-host".to_string(),
+                    host_uuid: Some("dummy-host".to_string()),
                     status: "ONLINE".to_string(),
-                    players: vec!["dummy-host".to_string()], // Host is first player
+                    player_uuids: vec!["dummy-host-uuid".to_string()],
                 },
             ))
         }
@@ -155,7 +155,7 @@ pub mod test_utils {
         async fn leave_room(
             &self,
             _room_id: &str,
-            _player_name: &str,
+            _player_uuid: &str,
         ) -> Result<crate::room::repository::LeaveRoomResult, AppError> {
             // Always return success for dummy implementation
             Ok(crate::room::repository::LeaveRoomResult::PlayerNotInRoom)

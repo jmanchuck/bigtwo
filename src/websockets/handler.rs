@@ -234,8 +234,21 @@ async fn handle_websocket_connection(
 
     // Send initial room state to the newly connected player
     if let Ok(Some(room)) = app_state.room_service.get_room(&room_id).await {
+        let mut players_names = Vec::new();
+        for uuid in room.get_player_uuids() {
+            if let Some(name) = app_state.player_mapping.get_playername(&uuid).await {
+                players_names.push(name);
+            } else {
+                warn!(
+                    room_id = %room_id,
+                    uuid = %uuid,
+                    "Player not found in mapping"
+                );
+            }
+        }
+
         let initial_message =
-            crate::websockets::messages::WebSocketMessage::players_list(room.players);
+            crate::websockets::messages::WebSocketMessage::players_list(players_names);
         if let Ok(message_json) = serde_json::to_string(&initial_message) {
             let _ = outbound_sender.send(message_json);
             debug!(

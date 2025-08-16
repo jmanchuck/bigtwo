@@ -21,8 +21,6 @@ impl RoomService {
     /// Creates a new room with a generated ID
     #[instrument(skip(self))]
     pub async fn create_room(&self, request: RoomCreateRequest) -> Result<RoomResponse, AppError> {
-        debug!(host_name = %request.host_name, "Creating new room");
-
         // Create room model with generated ID
         let room_model = RoomModel::new(request.host_name);
         debug!(room_id = %room_model.id, "Generated room ID");
@@ -33,7 +31,7 @@ impl RoomService {
         // Convert to response format
         let room_response = RoomResponse {
             id: room_model.id.clone(),
-            host_name: room_model.host_name.clone(),
+            host_name: room_model.host_uuid.clone().unwrap(), // TODO: map from uuid to name
             status: room_model.status.clone(),
             player_count: room_model.get_player_count(),
         };
@@ -58,7 +56,7 @@ impl RoomService {
 
         Ok(RoomResponse {
             id: room.id.clone(),
-            host_name: room.host_name.clone(),
+            host_name: room.host_uuid.clone().unwrap(), // TODO: map from uuid to name
             status: room.status.clone(),
             player_count: room.get_player_count(),
         })
@@ -86,7 +84,7 @@ impl RoomService {
             .into_iter()
             .map(|room| RoomResponse {
                 id: room.id.clone(),
-                host_name: room.host_name.clone(),
+                host_name: room.host_uuid.clone().unwrap(), // TODO: map from uuid to name
                 status: room.status.clone(),
                 player_count: room.get_player_count(),
             })
@@ -120,7 +118,7 @@ impl RoomService {
                 );
                 Ok(RoomResponse {
                     id: updated_room.id.clone(),
-                    host_name: updated_room.host_name.clone(),
+                    host_name: updated_room.host_uuid.clone().unwrap(), // TODO: map from uuid to name
                     status: updated_room.status.clone(),
                     player_count: updated_room.get_player_count(),
                 })
@@ -206,7 +204,10 @@ mod tests {
         // Verify room was actually stored in repository by trying to get it
         let stored_room = repo.get_room(&response.id).await.unwrap();
         assert!(stored_room.is_some());
-        assert_eq!(stored_room.unwrap().host_name, "test-host");
+        assert_eq!(
+            stored_room.unwrap().host_uuid,
+            Some("test-host".to_string())
+        );
     }
 
     #[tokio::test]
@@ -230,11 +231,11 @@ mod tests {
         // Both should be stored and retrievable
         let stored_room1 = repo.get_room(&response1.id).await.unwrap();
         assert!(stored_room1.is_some());
-        assert_eq!(stored_room1.unwrap().host_name, "host-1");
+        assert_eq!(stored_room1.unwrap().host_uuid, Some("host-1".to_string()));
 
         let stored_room2 = repo.get_room(&response2.id).await.unwrap();
         assert!(stored_room2.is_some());
-        assert_eq!(stored_room2.unwrap().host_name, "host-2");
+        assert_eq!(stored_room2.unwrap().host_uuid, Some("host-2".to_string()));
     }
 
     #[tokio::test]
@@ -417,7 +418,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(final_room.get_player_count(), 3);
-        assert_eq!(final_room.host_name, "host-player");
+        assert_eq!(final_room.host_uuid, Some("host-player".to_string()));
         assert_eq!(final_room.status, "ONLINE");
     }
 

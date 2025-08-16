@@ -9,17 +9,17 @@ use tokio::sync::{mpsc, RwLock};
 /// The owned sender is called the outbound sender
 #[async_trait]
 pub trait ConnectionManager: Send + Sync {
-    async fn add_connection(&self, username: String, sender: mpsc::UnboundedSender<String>);
+    async fn add_connection(&self, uuid: String, sender: mpsc::UnboundedSender<String>);
 
-    async fn remove_connection(&self, username: &str);
+    async fn remove_connection(&self, uuid: &str);
 
-    async fn send_to_player(&self, username: &str, message: &str);
+    async fn send_to_player(&self, uuid: &str, message: &str);
 
-    async fn send_to_players(&self, usernames: &[String], message: &str);
+    async fn send_to_players(&self, uuids: &[String], message: &str);
 }
 
 pub struct InMemoryConnectionManager {
-    // username -> sender
+    // uuid -> sender
     connections: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<String>>>>,
 }
 
@@ -39,35 +39,35 @@ impl InMemoryConnectionManager {
 
 #[async_trait]
 impl ConnectionManager for InMemoryConnectionManager {
-    async fn add_connection(&self, username: String, sender: mpsc::UnboundedSender<String>) {
+    async fn add_connection(&self, uuid: String, sender: mpsc::UnboundedSender<String>) {
         let mut connections = self.connections.write().await;
 
         // If there's an existing connection for this username, close it first
-        if let Some(existing_sender) = connections.insert(username.clone(), sender) {
+        if let Some(existing_sender) = connections.insert(uuid.clone(), sender) {
             // Drop the existing sender to close the connection
             drop(existing_sender);
-            tracing::info!(username = %username, "Replaced existing WebSocket connection");
+            tracing::info!(uuid = %uuid, "Replaced existing WebSocket connection");
         } else {
-            tracing::info!(username = %username, "Added new WebSocket connection");
+            tracing::info!(uuid = %uuid, "Added new WebSocket connection");
         }
     }
 
-    async fn remove_connection(&self, username: &str) {
+    async fn remove_connection(&self, uuid: &str) {
         let mut connections = self.connections.write().await;
-        connections.remove(username);
+        connections.remove(uuid);
     }
 
-    async fn send_to_player(&self, username: &str, message: &str) {
+    async fn send_to_player(&self, uuid: &str, message: &str) {
         let connections = self.connections.read().await;
-        if let Some(sender) = connections.get(username) {
+        if let Some(sender) = connections.get(uuid) {
             let _ = sender.send(message.to_string());
         }
     }
 
-    async fn send_to_players(&self, usernames: &[String], message: &str) {
+    async fn send_to_players(&self, uuids: &[String], message: &str) {
         let connections = self.connections.read().await;
-        for username in usernames {
-            if let Some(sender) = connections.get(username) {
+        for uuid in uuids {
+            if let Some(sender) = connections.get(uuid) {
                 let _ = sender.send(message.to_string());
             }
         }

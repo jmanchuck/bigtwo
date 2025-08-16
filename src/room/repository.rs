@@ -42,14 +42,14 @@ pub trait RoomRepository {
     async fn try_join_room(
         &self,
         room_id: &str,
-        player_name: &str,
+        player_uuid: &str,
     ) -> Result<JoinRoomResult, AppError>;
 
     /// Atomically attempts to remove a player from a room
     async fn leave_room(
         &self,
         room_id: &str,
-        player_name: &str,
+        player_uuid: &str,
     ) -> Result<LeaveRoomResult, AppError>;
 }
 
@@ -77,8 +77,6 @@ impl InMemoryRoomRepository {
 impl RoomRepository for InMemoryRoomRepository {
     #[instrument(skip(self, room))]
     async fn create_room(&self, room: &RoomModel) -> Result<(), AppError> {
-        debug!(room_id = %room.id, host_name = %room.host_name, "Creating room in memory");
-
         let mut rooms = self.rooms.lock().unwrap();
         if rooms.contains_key(&room.id) {
             warn!(room_id = %room.id, "Room already exists in memory");
@@ -95,16 +93,8 @@ impl RoomRepository for InMemoryRoomRepository {
         debug!(room_id = %room_id, "Fetching room from memory");
 
         let rooms = self.rooms.lock().unwrap();
-        let room = rooms.get(room_id).cloned();
 
-        match &room {
-            Some(r) => {
-                debug!(room_id = %room_id, host_name = %r.host_name, "Room found in memory")
-            }
-            None => debug!(room_id = %room_id, "Room not found in memory"),
-        }
-
-        Ok(room)
+        Ok(rooms.get(room_id).cloned())
     }
 
     #[instrument(skip(self))]
@@ -122,9 +112,13 @@ impl RoomRepository for InMemoryRoomRepository {
     async fn try_join_room(
         &self,
         room_id: &str,
-        player_name: &str,
+        player_uuid: &str,
     ) -> Result<JoinRoomResult, AppError> {
-        debug!(room_id = %room_id, player_name = %player_name, "Attempting to join room atomically");
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Attempting to join room atomically with UUID"
+        );
 
         let mut rooms = self.rooms.lock().unwrap();
 
@@ -143,23 +137,27 @@ impl RoomRepository for InMemoryRoomRepository {
             return Ok(JoinRoomResult::RoomFull);
         }
 
-        // Check if player is already in room (prevent duplicates)
-        if room.has_player(player_name) {
-            debug!(room_id = %room_id, player_name = %player_name, "Player already in room");
+        // Check if player is already in room by either username or UUID (prevent duplicates)
+        if room.has_player(player_uuid) {
+            debug!(
+                room_id = %room_id,
+                player_uuid = %player_uuid,
+                "Player already in room"
+            );
             return Ok(JoinRoomResult::Success(room.clone()));
         }
 
-        // Add player to the room
-        room.players.push(player_name.to_string());
+        // Add player to the room (both username and UUID)
+        room.add_player(player_uuid.to_string());
 
         // Clone the updated room data to return
         let updated_room = room.clone();
 
         info!(
             room_id = %room_id,
-            player_name = %player_name,
+            player_uuid = %player_uuid,
             new_player_count = updated_room.get_player_count(),
-            "Player joined room successfully (atomic)"
+            "Player joined room successfully with UUID (atomic)"
         );
 
         Ok(JoinRoomResult::Success(updated_room))
@@ -169,9 +167,13 @@ impl RoomRepository for InMemoryRoomRepository {
     async fn leave_room(
         &self,
         room_id: &str,
-        player_name: &str,
+        player_uuid: &str,
     ) -> Result<LeaveRoomResult, AppError> {
-        info!(room_id = %room_id, player_name = %player_name, "Attempting to leave room atomically");
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Attempting to leave room atomically with UUID"
+        );
 
         let mut rooms = self.rooms.lock().unwrap();
 
@@ -184,32 +186,36 @@ impl RoomRepository for InMemoryRoomRepository {
             }
         };
 
-        // Check if player is in the room
-        if !room.has_player(player_name) {
-            info!(room_id = %room_id, player_name = %player_name, "Player not in room");
+        // Check if player is in the room (by either username or UUID)
+        if !room.has_player(player_uuid) {
+            info!(
+                room_id = %room_id,
+                player_uuid = %player_uuid,
+                "Player not in room"
+            );
             return Ok(LeaveRoomResult::PlayerNotInRoom);
         }
 
-        // Remove player from the room
-        room.players.retain(|p| p != player_name);
+        // Remove player from the room (both username and UUID)
+        room.remove_player(player_uuid);
 
         // If room is now empty, delete it
-        if room.players.is_empty() {
+        if room.player_uuids.is_empty() {
             info!(room_id = %room_id, "Room is now empty, deleting");
             rooms.remove(room_id);
             return Ok(LeaveRoomResult::RoomDeleted);
         }
 
         // If the leaving player was the host, assign new host to first remaining player
-        if room.host_name == player_name {
-            if let Some(new_host) = room.players.first().cloned() {
+        if room.host_uuid.is_some() && room.host_uuid.as_ref().unwrap() == player_uuid {
+            if let Some(new_host) = room.player_uuids.first().cloned() {
                 info!(
                     room_id = %room_id,
-                    old_host = %player_name,
+                    old_host = %player_uuid,
                     new_host = %new_host,
                     "Host left, assigning new host"
                 );
-                room.host_name = new_host;
+                room.host_uuid = Some(new_host);
             }
         }
 
@@ -218,12 +224,9 @@ impl RoomRepository for InMemoryRoomRepository {
 
         info!(
             room_id = %room_id,
-            player_name = %player_name,
             new_player_count = updated_room.get_player_count(),
-            current_host = %updated_room.host_name,
-            "Player left room successfully (atomic)"
+            "Player left room successfully with UUID (atomic)"
         );
-
         Ok(LeaveRoomResult::Success(updated_room))
     }
 }
@@ -232,27 +235,20 @@ impl RoomRepository for InMemoryRoomRepository {
 mod tests {
     use super::*;
 
-    /// Test helper functions for creating test data
-    mod helpers {
-        use super::*;
-
-        /// Creates a test room with a specific ID and host
-        pub fn create_test_room(room_id: &str, host_name: &str) -> RoomModel {
-            RoomModel {
-                id: room_id.to_string(),
-                host_name: host_name.to_string(),
-                status: "ONLINE".to_string(),
-                players: vec![host_name.to_string()], // Host is first player
-            }
+    /// Creates a test room with a specific ID and host
+    pub fn create_test_room_with_host(room_id: &str, host_uuid: &str) -> RoomModel {
+        RoomModel {
+            id: room_id.to_string(),
+            host_uuid: Some(host_uuid.to_string()),
+            status: "ONLINE".to_string(),
+            player_uuids: vec![host_uuid.to_string()], // Test UUID for host
         }
     }
-
-    use helpers::*;
 
     #[tokio::test]
     async fn test_create_and_get_room() {
         let repo = InMemoryRoomRepository::new();
-        let room = create_test_room("test-room", "test-host");
+        let room = create_test_room_with_host("test-room", "test-host");
 
         // Create room
         repo.create_room(&room).await.unwrap();
@@ -262,7 +258,7 @@ mod tests {
         assert!(retrieved.is_some());
         let retrieved_room = retrieved.unwrap();
         assert_eq!(retrieved_room.id, room.id);
-        assert_eq!(retrieved_room.host_name, room.host_name);
+        assert_eq!(retrieved_room.host_uuid, room.host_uuid);
         assert_eq!(retrieved_room.status, "ONLINE");
         assert_eq!(retrieved_room.get_player_count(), 1);
     }
@@ -278,7 +274,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_duplicate_room() {
         let repo = InMemoryRoomRepository::new();
-        let room = create_test_room("test-room", "test-host");
+        let room = create_test_room_with_host("test-room", "test-host");
 
         // Create room
         repo.create_room(&room).await.unwrap();
@@ -292,9 +288,9 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_rooms() {
         let repo = InMemoryRoomRepository::new();
-        let room1 = create_test_room("room-1", "host-1");
-        let room2 = create_test_room("room-2", "host-2");
-        let room3 = create_test_room("room-3", "host-3");
+        let room1 = create_test_room_with_host("room-1", "host-1");
+        let room2 = create_test_room_with_host("room-2", "host-2");
+        let room3 = create_test_room_with_host("room-3", "host-3");
 
         // Create all rooms
         repo.create_room(&room1).await.unwrap();
@@ -304,15 +300,15 @@ mod tests {
         // Verify all rooms exist
         let retrieved1 = repo.get_room(&room1.id).await.unwrap();
         assert!(retrieved1.is_some());
-        assert_eq!(retrieved1.unwrap().host_name, "host-1");
+        assert_eq!(retrieved1.unwrap().host_uuid, Some("host-1".to_string()));
 
         let retrieved2 = repo.get_room(&room2.id).await.unwrap();
         assert!(retrieved2.is_some());
-        assert_eq!(retrieved2.unwrap().host_name, "host-2");
+        assert_eq!(retrieved2.unwrap().host_uuid, Some("host-2".to_string()));
 
         let retrieved3 = repo.get_room(&room3.id).await.unwrap();
         assert!(retrieved3.is_some());
-        assert_eq!(retrieved3.unwrap().host_name, "host-3");
+        assert_eq!(retrieved3.unwrap().host_uuid, Some("host-3".to_string()));
     }
 
     #[tokio::test]
@@ -326,22 +322,22 @@ mod tests {
     #[tokio::test]
     async fn test_list_rooms_single() {
         let repo = InMemoryRoomRepository::new();
-        let room = create_test_room("test-room", "test-host");
+        let room = create_test_room_with_host("test-room", "test-host");
 
         repo.create_room(&room).await.unwrap();
 
         let rooms = repo.list_rooms().await.unwrap();
         assert_eq!(rooms.len(), 1);
         assert_eq!(rooms[0].id, "test-room");
-        assert_eq!(rooms[0].host_name, "test-host");
+        assert_eq!(rooms[0].host_uuid, Some("test-host".to_string()));
     }
 
     #[tokio::test]
     async fn test_list_rooms_multiple() {
         let repo = InMemoryRoomRepository::new();
-        let room1 = create_test_room("room-1", "host-1");
-        let room2 = create_test_room("room-2", "host-2");
-        let room3 = create_test_room("room-3", "host-3");
+        let room1 = create_test_room_with_host("room-1", "host-1");
+        let room2 = create_test_room_with_host("room-2", "host-2");
+        let room3 = create_test_room_with_host("room-3", "host-3");
 
         // Create all rooms
         repo.create_room(&room1).await.unwrap();
@@ -360,12 +356,150 @@ mod tests {
         assert!(room_ids.contains("room-3"));
 
         // Verify host names are correct
-        let room_hosts: std::collections::HashMap<String, String> = rooms
+        let room_hosts: std::collections::HashMap<String, Option<String>> = rooms
             .iter()
-            .map(|r| (r.id.clone(), r.host_name.clone()))
+            .map(|r| (r.id.clone(), r.host_uuid.clone()))
             .collect();
-        assert_eq!(room_hosts.get("room-1"), Some(&"host-1".to_string()));
-        assert_eq!(room_hosts.get("room-2"), Some(&"host-2".to_string()));
-        assert_eq!(room_hosts.get("room-3"), Some(&"host-3".to_string()));
+        assert_eq!(room_hosts.get("room-1"), Some(&Some("host-1".to_string())));
+        assert_eq!(room_hosts.get("room-2"), Some(&Some("host-2".to_string())));
+        assert_eq!(room_hosts.get("room-3"), Some(&Some("host-3".to_string())));
+    }
+
+    // UUID-specific tests
+    #[tokio::test]
+    async fn test_try_join_room_with_uuid_success() {
+        let repo = InMemoryRoomRepository::new();
+        let room = create_test_room_with_host("test-room", "host");
+        repo.create_room(&room).await.unwrap();
+
+        // Join room with UUID
+        let result = repo.try_join_room("test-room", "player1").await.unwrap();
+
+        match result {
+            JoinRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 2);
+                assert!(updated_room.has_player("host"));
+                assert!(updated_room.has_player("player1"));
+                assert_eq!(updated_room.player_uuids.len(), 2);
+            }
+            _ => panic!("Expected success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_try_join_room_with_uuid_duplicate() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "host");
+        room.add_player("player1".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Try to join with same UUID
+        let result = repo.try_join_room("test-room", "player1").await.unwrap();
+
+        match result {
+            JoinRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 2); // Should not add duplicate
+            }
+            _ => panic!("Expected success for duplicate join"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_try_join_room_with_uuid_full_room() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "host");
+
+        // Fill room to capacity
+        room.add_player("player1".to_string());
+        room.add_player("player2".to_string());
+        room.add_player("player3".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Try to join full room
+        let result = repo.try_join_room("test-room", "player4").await.unwrap();
+
+        assert!(matches!(result, JoinRoomResult::RoomFull));
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_with_uuid_success() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "host");
+        room.add_player("player1".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Leave room with UUID
+        let result = repo.leave_room("test-room", "player1").await.unwrap();
+
+        match result {
+            LeaveRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 1);
+                assert!(!updated_room.has_player("player1"));
+                assert!(!updated_room.has_player("player1-uuid"));
+                assert_eq!(updated_room.player_uuids.len(), 1);
+            }
+            _ => panic!("Expected success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_with_uuid_host_change() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "host");
+        room.add_player("player1".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Host leaves room
+        let result = repo.leave_room("test-room", "host").await.unwrap();
+
+        match result {
+            LeaveRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 1);
+                assert_eq!(updated_room.host_uuid, Some("player1".to_string())); // player1 becomes new host
+                assert!(!updated_room.has_player("host"));
+                assert!(!updated_room.has_player("host-uuid"));
+            }
+            _ => panic!("Expected success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_with_uuid_empty_room_deleted() {
+        let repo = InMemoryRoomRepository::new();
+        let room = create_test_room_with_host("test-room", "host");
+        repo.create_room(&room).await.unwrap();
+
+        // Last player leaves room
+        let result = repo.leave_room("test-room", "host").await.unwrap();
+
+        assert!(matches!(result, LeaveRoomResult::RoomDeleted));
+
+        // Verify room is deleted
+        let room_check = repo.get_room("test-room").await.unwrap();
+        assert!(room_check.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_room_model_uuid_methods() {
+        let mut room = RoomModel::new("test-host".to_string());
+
+        // Test adding players with UUIDs
+        room.add_player("player1".to_string());
+        room.add_player("player2".to_string());
+
+        assert_eq!(room.get_player_count(), 2);
+        assert!(room.has_player("player1"));
+        assert!(room.has_player("player2"));
+
+        // Test removing player by UUID
+        room.remove_player("player1");
+        assert_eq!(room.get_player_count(), 1);
+        assert!(!room.has_player("player1"));
+        assert!(room.has_player("player2"));
+
+        // Test removing player by both username and UUID
+        room.remove_player("player2");
+        assert_eq!(room.get_player_count(), 0);
+        assert!(!room.has_player("player2"));
     }
 }

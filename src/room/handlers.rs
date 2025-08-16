@@ -33,6 +33,7 @@ pub async fn create_room(
         Arc::clone(&state.room_service),
         Arc::clone(&state.connection_manager),
         Arc::clone(&state.game_service),
+        Arc::clone(&state.player_mapping),
         state.event_bus.clone(),
     ));
 

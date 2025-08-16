@@ -125,7 +125,13 @@ impl GameBuilder {
             let player_names = setup.players.clone();
             setup
                 .game_service
-                .create_game("room-123", &player_names)
+                .create_game(
+                    "room-123",
+                    &player_names
+                        .iter()
+                        .map(|p| p.0.clone())
+                        .collect::<Vec<String>>(),
+                )
                 .await
                 .unwrap();
 

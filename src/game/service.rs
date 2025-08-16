@@ -21,19 +21,23 @@ impl GameService {
     }
 
     /// Create a new game for the specified room with the given players
-    pub async fn create_game(&self, room_id: &str, players: &[String]) -> Result<Game, AppError> {
+    pub async fn create_game(
+        &self,
+        room_id: &str,
+        player_uuids: &[String],
+    ) -> Result<Game, AppError> {
         // Input validation
         if room_id.trim().is_empty() {
             return Err(AppError::BadRequest("Room ID cannot be empty".to_string()));
         }
 
-        if players.len() != 4 {
+        if player_uuids.len() != 4 {
             return Err(AppError::BadRequest(
                 "Big Two requires exactly 4 players".to_string(),
             ));
         }
 
-        for player in players {
+        for player in player_uuids {
             if player.trim().is_empty() {
                 return Err(AppError::BadRequest(
                     "Player names cannot be empty".to_string(),
@@ -43,7 +47,7 @@ impl GameService {
 
         // Check for duplicate player names
         let mut unique_players = std::collections::HashSet::new();
-        for player in players {
+        for player in player_uuids {
             if !unique_players.insert(player.trim()) {
                 return Err(AppError::BadRequest(
                     "All player names must be unique".to_string(),
@@ -52,7 +56,7 @@ impl GameService {
         }
 
         self.game_repository
-            .create_game(room_id, players)
+            .create_game(room_id, player_uuids)
             .await
             .map_err(|_e| AppError::Internal)?;
 
@@ -67,7 +71,7 @@ impl GameService {
     pub async fn try_play_move(
         &self,
         room_id: &str,
-        player: &str,
+        player_uuid: &str,
         cards: &[Card],
     ) -> Result<MoveResult, AppError> {
         // Get current game
@@ -79,7 +83,7 @@ impl GameService {
 
         // Execute the move and check if player won
         let player_won = game
-            .play_cards(player, cards)
+            .play_cards(player_uuid, cards)
             .map_err(|e| AppError::NotFound(format!("Game error: {}", e)))?;
 
         // Update the game in the repository
@@ -142,6 +146,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -149,6 +154,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Six, Suit::Clubs),
                     Card::new(Rank::Seven, Suit::Diamonds),
@@ -188,10 +194,10 @@ mod tests {
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "Alice".to_string(),
-            "Bob".to_string(),
-            "Charlie".to_string(),
-            "David".to_string(),
+            "alice-uuid".to_string(),
+            "bob-uuid".to_string(),
+            "charlie-uuid".to_string(),
+            "david-uuid".to_string(),
         ];
         service.create_game("test_room", &players).await.unwrap();
 
@@ -238,10 +244,10 @@ mod tests {
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "Alice".to_string(),
-            "Bob".to_string(),
-            "Charlie".to_string(),
-            "David".to_string(),
+            "alice-uuid".to_string(),
+            "bob-uuid".to_string(),
+            "charlie-uuid".to_string(),
+            "david-uuid".to_string(),
         ];
         service.create_game("test_room", &players).await.unwrap();
 
@@ -260,7 +266,7 @@ mod tests {
         let result = service
             .try_play_move(
                 "test_room",
-                &player_with_3d.name,
+                &player_with_3d.uuid,
                 &[Card::new(Rank::Three, Suit::Diamonds)],
             )
             .await;

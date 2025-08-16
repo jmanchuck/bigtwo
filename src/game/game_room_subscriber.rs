@@ -83,15 +83,15 @@ impl GameEventRoomSubscriber {
     async fn handle_player_played_move(
         &self,
         room_id: &str,
-        player: &str,
+        player_uuid: &str,
         cards: &[Card],
     ) -> Result<(), RoomEventError> {
-        info!(room_id = %room_id, player = %player, cards = ?cards, "Player played move");
+        info!(room_id = %room_id, player_uuid = %player_uuid, cards = ?cards, "Player played move");
 
         // Execute the move using GameService
         let move_result = self
             .game_service
-            .try_play_move(room_id, player, cards)
+            .try_play_move(room_id, player_uuid, cards)
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to play move: {}", e)))?;
 
@@ -101,7 +101,7 @@ impl GameEventRoomSubscriber {
                 .emit_to_room(
                     room_id,
                     RoomEvent::GameWon {
-                        winner: player.to_string(),
+                        winner: player_uuid.to_string(),
                     },
                 )
                 .await;
@@ -113,7 +113,7 @@ impl GameEventRoomSubscriber {
             .emit_to_room(
                 room_id,
                 RoomEvent::MovePlayed {
-                    player: player.to_string(),
+                    player: player_uuid.to_string(),
                     cards: cards.to_vec(),
                     game: move_result.game.clone(),
                 },
@@ -178,6 +178,7 @@ mod tests {
         vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -186,6 +187,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Six, Suit::Clubs),
                     Card::new(Rank::Seven, Suit::Diamonds),
@@ -194,6 +196,7 @@ mod tests {
             },
             Player {
                 name: "Charlie".to_string(),
+                uuid: "charlie-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Nine, Suit::Spades),
                     Card::new(Rank::Ten, Suit::Clubs),
@@ -202,6 +205,7 @@ mod tests {
             },
             Player {
                 name: "David".to_string(),
+                uuid: "david-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Queen, Suit::Hearts),
                     Card::new(Rank::King, Suit::Spades),
@@ -272,10 +276,10 @@ mod tests {
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "Alice".to_string(),
-            "Bob".to_string(),
-            "Charlie".to_string(),
-            "David".to_string(),
+            "alice-uuid".to_string(),
+            "bob-uuid".to_string(),
+            "charlie-uuid".to_string(),
+            "david-uuid".to_string(),
         ];
         game_service
             .create_game("test_room", &players)
@@ -294,7 +298,7 @@ mod tests {
         let result = subscriber
             .handle_player_played_move(
                 "test_room",
-                &player_with_3d.name,
+                &player_with_3d.uuid,
                 &[Card::new(Rank::Three, Suit::Diamonds)],
             )
             .await;
@@ -310,7 +314,7 @@ mod tests {
         let result = subscriber
             .handle_player_played_move(
                 "nonexistent_room",
-                "Alice",
+                "alice-uuid",
                 &[Card::new(Rank::Three, Suit::Diamonds)],
             )
             .await;
@@ -326,10 +330,10 @@ mod tests {
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "Alice".to_string(),
-            "Bob".to_string(),
-            "Charlie".to_string(),
-            "David".to_string(),
+            "alice-uuid".to_string(),
+            "bob-uuid".to_string(),
+            "charlie-uuid".to_string(),
+            "david-uuid".to_string(),
         ];
         game_service
             .create_game("test_room", &players)
@@ -344,9 +348,9 @@ mod tests {
         let wrong_player = game
             .players()
             .iter()
-            .find(|p| p.name != current_player)
+            .find(|p| p.uuid != current_player)
             .unwrap()
-            .name
+            .uuid
             .clone();
 
         // Try to play with wrong player

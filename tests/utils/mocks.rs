@@ -13,6 +13,7 @@ use bigtwo::websockets::ConnectionManager;
 pub struct MockConnectionManager {
     sent_messages: Arc<RwLock<HashMap<String, Vec<String>>>>,
     connected_players: Arc<RwLock<Vec<String>>>,
+    name_to_uuid: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl MockConnectionManager {
@@ -20,6 +21,7 @@ impl MockConnectionManager {
         Self {
             sent_messages: Arc::new(RwLock::new(HashMap::new())),
             connected_players: Arc::new(RwLock::new(Vec::new())),
+            name_to_uuid: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -40,9 +42,9 @@ impl MockConnectionManager {
     }
 
     /// Consume and return the first message for a player (like a proper queue)
-    pub async fn consume_message_for(&self, username: &str) -> Option<String> {
+    pub async fn consume_message_for(&self, uuid: &str) -> Option<String> {
         let mut messages = self.sent_messages.write().await;
-        let player_messages = messages.get_mut(username)?;
+        let player_messages = messages.get_mut(uuid)?;
         if player_messages.is_empty() {
             None
         } else {
@@ -53,33 +55,46 @@ impl MockConnectionManager {
     pub async fn clear_messages(&self) {
         self.sent_messages.write().await.clear();
     }
+
+    /// Register a mapping from player name to uuid (for tests)
+    pub async fn register_player_mapping(&self, name: &str, uuid: &str) {
+        self.name_to_uuid
+            .write()
+            .await
+            .insert(name.to_string(), uuid.to_string());
+    }
 }
 
 #[async_trait]
 impl ConnectionManager for MockConnectionManager {
-    async fn add_connection(&self, username: String, _sender: mpsc::UnboundedSender<String>) {
-        self.add_connected_player(&username).await;
+    async fn add_connection(&self, uuid: String, _sender: mpsc::UnboundedSender<String>) {
+        self.add_connected_player(&uuid).await;
     }
 
-    async fn remove_connection(&self, username: &str) {
-        self.connected_players
-            .write()
-            .await
-            .retain(|p| p != username);
+    async fn remove_connection(&self, uuid: &str) {
+        self.connected_players.write().await.retain(|p| p != uuid);
     }
 
-    async fn send_to_player(&self, username: &str, message: &str) {
+    async fn send_to_player(&self, uuid: &str, message: &str) {
+        // In production the key is uuid. Some code paths in tests send to
+        // player name (game_player.name). Normalize here by remapping names to uuids.
+        let key = if let Some(mapped) = self.name_to_uuid.read().await.get(uuid).cloned() {
+            mapped
+        } else {
+            uuid.to_string()
+        };
+
         self.sent_messages
             .write()
             .await
-            .entry(username.to_string())
+            .entry(key)
             .or_default()
             .push(message.to_string());
     }
 
-    async fn send_to_players(&self, usernames: &[String], message: &str) {
-        for username in usernames {
-            self.send_to_player(username, message).await;
+    async fn send_to_players(&self, uuids: &[String], message: &str) {
+        for uuid in uuids {
+            self.send_to_player(uuid, message).await;
         }
     }
 }

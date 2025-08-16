@@ -26,7 +26,7 @@ pub enum MessageType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketMessageMeta {
     pub timestamp: DateTime<Utc>,
-    pub player_id: Option<String>,
+    pub player_uuid: Option<String>,
 }
 
 /// Base structure for WebSocket messages
@@ -41,7 +41,7 @@ pub struct WebSocketMessage {
 /// Client-to-Server message payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatPayload {
-    pub sender: String,
+    pub sender_uuid: String,
     pub content: String,
 }
 
@@ -107,7 +107,7 @@ impl WebSocketMessage {
             payload,
             meta: Some(WebSocketMessageMeta {
                 timestamp: Utc::now(),
-                player_id: None,
+                player_uuid: None,
             }),
         }
     }
@@ -163,8 +163,11 @@ impl WebSocketMessage {
     }
 
     /// Create a CHAT message
-    pub fn chat(sender: String, content: String) -> Self {
-        let payload = ChatPayload { sender, content };
+    pub fn chat(sender_uuid: String, content: String) -> Self {
+        let payload = ChatPayload {
+            sender_uuid,
+            content,
+        };
         Self::new(MessageType::Chat, serde_json::to_value(payload).unwrap())
     }
 
