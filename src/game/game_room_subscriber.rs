@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::time::{sleep, Duration};
 use tracing::info;
 
 use crate::{
@@ -33,6 +34,12 @@ impl RoomEventHandler for GameEventRoomSubscriber {
             RoomEvent::TryPlayMove { player, cards } => {
                 self.handle_player_played_move(room_id, &player, &cards)
                     .await?;
+            }
+            RoomEvent::GameWon { winner } => {
+                self.handle_game_won(room_id, &winner).await?;
+            }
+            RoomEvent::GameReset => {
+                self.handle_game_reset(room_id).await?;
             }
             _ => {}
         }
@@ -122,6 +129,44 @@ impl GameEventRoomSubscriber {
                 },
             )
             .await;
+
+        Ok(())
+    }
+
+    async fn handle_game_won(
+        &self,
+        room_id: &str,
+        winner: &str,
+    ) -> Result<(), RoomEventError> {
+        info!(room_id = %room_id, winner = %winner, "Game won, starting 5-second reset timer");
+
+        // Clone necessary data for the async task
+        let room_id = room_id.to_string();
+        let event_bus = self.event_bus.clone();
+
+        // Spawn async task to handle 5-second delay and reset
+        tokio::spawn(async move {
+            sleep(Duration::from_secs(5)).await;
+            
+            info!(room_id = %room_id, "5-second timer elapsed, emitting GameReset");
+            
+            event_bus.emit_to_room(&room_id, RoomEvent::GameReset).await;
+        });
+
+        Ok(())
+    }
+
+    async fn handle_game_reset(
+        &self,
+        room_id: &str,
+    ) -> Result<(), RoomEventError> {
+        info!(room_id = %room_id, "Resetting game to lobby state");
+
+        // Reset the game state in the repository
+        self.game_service
+            .reset_game_to_lobby(room_id)
+            .await
+            .map_err(|e| RoomEventError::HandlerError(format!("Failed to reset game: {}", e)))?;
 
         Ok(())
     }

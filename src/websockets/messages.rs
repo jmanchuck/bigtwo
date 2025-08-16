@@ -19,6 +19,7 @@ pub enum MessageType {
     Error,
     GameStarted,
     GameWon,
+    GameReset,
 }
 
 /// Metadata for WebSocket messages
@@ -91,6 +92,11 @@ pub struct TurnChangePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameWonPayload {
     pub winner: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameResetPayload {
+    // Empty payload - just signals that game should reset to lobby
 }
 
 /// Helper functions for creating messages
@@ -181,5 +187,11 @@ impl WebSocketMessage {
     pub fn game_won(winner: String) -> Self {
         let payload = GameWonPayload { winner };
         Self::new(MessageType::GameWon, serde_json::to_value(payload).unwrap())
+    }
+
+    /// Create a GAME_RESET message
+    pub fn game_reset() -> Self {
+        let payload = GameResetPayload {};
+        Self::new(MessageType::GameReset, serde_json::to_value(payload).unwrap())
     }
 }

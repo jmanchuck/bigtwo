@@ -37,4 +37,6 @@ pub enum RoomEvent {
     TurnChanged { player: String },
     /// Game won by a player
     GameWon { winner: String },
+    /// Game reset to lobby (after win countdown)
+    GameReset,
 }

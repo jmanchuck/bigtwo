@@ -96,6 +96,15 @@ impl GameService {
         self.game_repository.get_game(room_id).await
     }
 
+    /// Reset the game to lobby state by removing it from the repository
+    pub async fn reset_game_to_lobby(&self, room_id: &str) -> Result<(), AppError> {
+        self.game_repository
+            .delete_game(room_id)
+            .await?;
+        
+        Ok(())
+    }
+
     /// Create a new game with predetermined card distributions
     pub async fn create_game_with_cards(
         &self,

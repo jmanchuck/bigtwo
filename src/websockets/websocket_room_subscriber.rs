@@ -63,6 +63,7 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
             }
             RoomEvent::TurnChanged { player } => self.handle_turn_changed(room_id, &player).await,
             RoomEvent::GameWon { winner } => self.handle_game_won(room_id, &winner).await,
+            RoomEvent::GameReset => self.handle_game_reset(room_id).await,
             _ => {
                 info!(
                     room_id = %room_id,
@@ -568,6 +569,49 @@ impl WebSocketRoomSubscriber {
             winner = %winner,
             players_notified = game.players().len(),
             "Game won notification sent to all players"
+        );
+
+        Ok(())
+    }
+
+    async fn handle_game_reset(&self, room_id: &str) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            "Handling game reset event"
+        );
+
+        // Get current room to find all players (game may be deleted by now)
+        let room = self
+            .room_service
+            .get_room(room_id)
+            .await
+            .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?;
+
+        let room = match room {
+            Some(room) => room,
+            None => {
+                warn!(room_id = %room_id, "Room was deleted, no reset notifications needed");
+                return Ok(());
+            }
+        };
+
+        // Create game reset message
+        let game_reset_message = WebSocketMessage::game_reset();
+        let message_json = serde_json::to_string(&game_reset_message).map_err(|e| {
+            RoomEventError::HandlerError(format!("Failed to serialize GAME_RESET message: {}", e))
+        })?;
+
+        // Send to all players in the room
+        for player_name in &room.players {
+            self.connection_manager
+                .send_to_player(player_name, &message_json)
+                .await;
+        }
+
+        info!(
+            room_id = %room_id,
+            players_notified = room.players.len(),
+            "Game reset notification sent to all players"
         );
 
         Ok(())
