@@ -11,7 +11,7 @@ use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
 use crate::session::service::SessionService;
 use crate::websockets::ConnectionManager;
-use crate::{event::EventBus, game::GameService};
+use crate::{event::EventBus, game::GameService, user::PlayerMappingService};
 
 /// Shared application state containing all dependencies
 #[derive(Clone)]
@@ -22,6 +22,7 @@ pub struct AppState {
     pub event_bus: EventBus,
     pub connection_manager: Arc<dyn ConnectionManager>,
     pub game_service: Arc<GameService>,
+    pub player_mapping: Arc<dyn PlayerMappingService>,
 }
 
 impl AppState {
@@ -32,6 +33,7 @@ impl AppState {
         event_bus: EventBus,
         connection_manager: Arc<dyn ConnectionManager>,
         game_service: Arc<GameService>,
+        player_mapping: Arc<dyn PlayerMappingService>,
     ) -> Self {
         Self {
             session_repository,
@@ -40,6 +42,7 @@ impl AppState {
             event_bus,
             connection_manager,
             game_service,
+            player_mapping,
         }
     }
 }
@@ -185,6 +188,7 @@ pub mod test_utils {
         room_service: Option<Arc<RoomService>>,
         connection_manager: Option<Arc<dyn ConnectionManager>>,
         game_service: Option<Arc<GameService>>,
+        player_mapping: Option<Arc<dyn PlayerMappingService>>,
     }
 
     impl AppStateBuilder {
@@ -195,6 +199,7 @@ pub mod test_utils {
                 room_service: None,
                 connection_manager: None,
                 game_service: None,
+                player_mapping: None,
             }
         }
 
@@ -233,13 +238,24 @@ pub mod test_utils {
             self
         }
 
+        pub fn with_player_mapping(mut self, mapping: Arc<dyn PlayerMappingService>) -> Self {
+            self.player_mapping = Some(mapping);
+            self
+        }
+
         pub fn build(self) -> AppState {
             let session_repository = self
                 .session_repository
                 .unwrap_or_else(|| Arc::new(DummySessionRepository));
-            let session_service = self
-                .session_service
-                .unwrap_or_else(|| Arc::new(SessionService::new(session_repository.clone())));
+            let player_mapping = self.player_mapping.unwrap_or_else(|| {
+                Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
+            });
+            let session_service = self.session_service.unwrap_or_else(|| {
+                Arc::new(SessionService::new(
+                    session_repository.clone(),
+                    player_mapping.clone(),
+                ))
+            });
             let room_service = self
                 .room_service
                 .unwrap_or_else(|| Arc::new(RoomService::new(Arc::new(DummyRoomRepository))));
@@ -257,6 +273,7 @@ pub mod test_utils {
                     .connection_manager
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
                 game_service,
+                player_mapping,
             }
         }
     }

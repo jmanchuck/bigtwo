@@ -6,6 +6,7 @@ pub mod game;
 pub mod room;
 pub mod session;
 pub mod shared;
+pub mod user;
 pub mod websockets;
 
 // Re-export commonly used types for easier access in tests
@@ -13,6 +14,7 @@ pub use event::{EventBus, RoomEvent, RoomSubscription};
 pub use game::GameService;
 pub use room::{models::RoomModel, repository::RoomRepository};
 pub use shared::AppError;
+pub use user::PlayerMappingService;
 pub use websockets::{
     ConnectionManager, MessageHandler, MessageType, WebSocketMessage, WebSocketRoomSubscriber,
     WebsocketReceiveHandler,

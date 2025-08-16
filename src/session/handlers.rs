@@ -11,8 +11,7 @@ use crate::shared::{AppError, AppState};
 pub async fn create_session(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     info!("Creating new session");
 
-    let service = SessionService::new(Arc::clone(&state.session_repository));
-    let session_response = service.create_session().await?;
+    let session_response = state.session_service.create_session().await?;
 
     info!(
         username = %session_response.username,
