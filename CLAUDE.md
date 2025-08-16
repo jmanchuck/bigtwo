@@ -62,8 +62,9 @@ src/
 │   └── models.rs, types.rs  # Data structures
 ├── game/                     # Big Two game logic and state
 │   ├── cards.rs             # Card types, Big Two sorting rules
-│   ├── logic.rs             # Core game rules, turn progression
-│   ├── gamemanager.rs       # Game state management per room
+│   ├── core.rs              # Core game rules, turn progression
+│   ├── repository.rs        # Game state repository
+│   ├── service.rs           # Game service layer
 │   └── game_room_subscriber.rs # Event handler for game logic
 ├── websockets/               # Real-time WebSocket communication
 │   ├── handler.rs           # WebSocket upgrade and message routing
