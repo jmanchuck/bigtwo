@@ -133,11 +133,7 @@ impl GameEventRoomSubscriber {
         Ok(())
     }
 
-    async fn handle_game_won(
-        &self,
-        room_id: &str,
-        winner: &str,
-    ) -> Result<(), RoomEventError> {
+    async fn handle_game_won(&self, room_id: &str, winner: &str) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, winner = %winner, "Game won, starting 5-second reset timer");
 
         // Clone necessary data for the async task
@@ -147,19 +143,16 @@ impl GameEventRoomSubscriber {
         // Spawn async task to handle 5-second delay and reset
         tokio::spawn(async move {
             sleep(Duration::from_secs(5)).await;
-            
+
             info!(room_id = %room_id, "5-second timer elapsed, emitting GameReset");
-            
+
             event_bus.emit_to_room(&room_id, RoomEvent::GameReset).await;
         });
 
         Ok(())
     }
 
-    async fn handle_game_reset(
-        &self,
-        room_id: &str,
-    ) -> Result<(), RoomEventError> {
+    async fn handle_game_reset(&self, room_id: &str) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, "Resetting game to lobby state");
 
         // Reset the game state in the repository

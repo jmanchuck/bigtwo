@@ -192,6 +192,9 @@ impl WebSocketMessage {
     /// Create a GAME_RESET message
     pub fn game_reset() -> Self {
         let payload = GameResetPayload {};
-        Self::new(MessageType::GameReset, serde_json::to_value(payload).unwrap())
+        Self::new(
+            MessageType::GameReset,
+            serde_json::to_value(payload).unwrap(),
+        )
     }
 }

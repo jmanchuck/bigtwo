@@ -98,10 +98,8 @@ impl GameService {
 
     /// Reset the game to lobby state by removing it from the repository
     pub async fn reset_game_to_lobby(&self, room_id: &str) -> Result<(), AppError> {
-        self.game_repository
-            .delete_game(room_id)
-            .await?;
-        
+        self.game_repository.delete_game(room_id).await?;
+
         Ok(())
     }
 
