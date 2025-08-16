@@ -91,26 +91,50 @@ impl Game {
     }
 
     pub fn play_cards(&mut self, player_name: &str, cards: &[Card]) -> Result<bool, GameError> {
+        self.validate_player_turn(player_name)?;
+
+        if cards.is_empty() {
+            self.handle_pass()
+        } else {
+            self.handle_card_play(cards)
+        }
+    }
+
+    fn validate_player_turn(&self, player_name: &str) -> Result<(), GameError> {
         let player = &self.players[self.current_turn];
         if player.name != player_name {
             return Err(GameError::InvalidPlayerTurn);
         }
+        Ok(())
+    }
 
-        // Create hand from cards
-        let new_hand = Hand::from_cards(cards).map_err(GameError::HandError)?;
-
-        // First turn validation: must include 3 of diamonds
-        if self.played_hands.is_empty() && !cards.is_empty() {
-            let three_of_diamonds = Card::new(Rank::Three, Suit::Diamonds);
-            if !cards.contains(&three_of_diamonds) {
-                return Err(GameError::FirstTurnMustIncludeThreeOfDiamonds);
-            }
+    fn handle_pass(&mut self) -> Result<bool, GameError> {
+        if self.consecutive_passes >= 3 {
+            return Err(GameError::CannotPass);
         }
 
-        // Only validate card comparison for non-pass moves
+        self.consecutive_passes += 1;
+        self.played_hands.push(Hand::Pass);
+        self.advance_turn();
+        Ok(false)
+    }
+
+    fn handle_card_play(&mut self, cards: &[Card]) -> Result<bool, GameError> {
+        let new_hand = Hand::from_cards(cards).map_err(GameError::HandError)?;
+
+        self.validate_card_play(&new_hand, cards)?;
+        self.validate_card_ownership(cards)?;
+        self.validate_first_turn(cards)?;
+
+        let player_won = self.execute_card_play(cards, new_hand);
+        self.advance_turn();
+
+        Ok(player_won)
+    }
+
+    fn validate_card_play(&self, new_hand: &Hand, cards: &[Card]) -> Result<(), GameError> {
         // Skip validation if 3 consecutive passes have occurred (table is clear)
-        if !cards.is_empty() && self.consecutive_passes < 3 && !self.played_hands.is_empty() {
-            // Find the last non-pass hand to compare against
+        if self.consecutive_passes < 3 && !self.played_hands.is_empty() {
             if let Some(last_non_pass_hand) =
                 self.played_hands.iter().rev().find(|h| **h != Hand::Pass)
             {
@@ -119,43 +143,47 @@ impl Game {
                 }
             }
         }
+        Ok(())
+    }
 
-        if cards.is_empty() {
-            if self.consecutive_passes >= 3 {
-                return Err(GameError::CannotPass);
+    fn validate_card_ownership(&self, cards: &[Card]) -> Result<(), GameError> {
+        let current_player = &self.players[self.current_turn];
+        for card in cards {
+            if !current_player.cards.contains(card) {
+                return Err(GameError::CardNotOwned(*card));
             }
-            self.consecutive_passes += 1;
-            // Add pass to played hands (preserve history)
-            self.played_hands.push(Hand::Pass);
-        } else {
-            // Validate that player owns all cards before removing any
-            let current_player = &self.players[self.current_turn];
-            for card in cards {
-                if !current_player.cards.contains(card) {
-                    return Err(GameError::CardNotOwned(*card));
-                }
+        }
+        Ok(())
+    }
+
+    fn validate_first_turn(&self, cards: &[Card]) -> Result<(), GameError> {
+        if self.played_hands.is_empty() {
+            let three_of_diamonds = Card::new(Rank::Three, Suit::Diamonds);
+            if !cards.contains(&three_of_diamonds) {
+                return Err(GameError::FirstTurnMustIncludeThreeOfDiamonds);
             }
+        }
+        Ok(())
+    }
 
-            // Remove played cards from the player's hand
-            let current_player = &mut self.players[self.current_turn];
-            for card in cards {
-                if let Some(pos) = current_player.cards.iter().position(|c| c == card) {
-                    current_player.cards.remove(pos);
-                }
-            }
-
-            self.consecutive_passes = 0;
-            // Add the played hand to history
-            self.played_hands.push(new_hand);
-
-            // Check if player won (has no cards left)
-            if current_player.cards.is_empty() {
-                return Ok(true); // Player won
+    fn execute_card_play(&mut self, cards: &[Card], new_hand: Hand) -> bool {
+        // Remove played cards from the player's hand
+        let current_player = &mut self.players[self.current_turn];
+        for card in cards {
+            if let Some(pos) = current_player.cards.iter().position(|c| c == card) {
+                current_player.cards.remove(pos);
             }
         }
 
+        self.consecutive_passes = 0;
+        self.played_hands.push(new_hand);
+
+        // Check if player won (has no cards left)
+        current_player.cards.is_empty()
+    }
+
+    fn advance_turn(&mut self) {
         self.current_turn = (self.current_turn + 1) % self.players.len();
-        Ok(false) // Game continues
     }
 
     pub fn players(&self) -> &Vec<Player> {
@@ -195,7 +223,9 @@ mod tests {
     use super::*;
     use crate::game::cards::{Hand, Rank, Suit};
 
-    fn create_starting_hands(players: &[Player]) -> std::collections::HashMap<String, Vec<Card>> {
+    fn create_player_starting_hands(
+        players: &[Player],
+    ) -> std::collections::HashMap<String, Vec<Card>> {
         players
             .iter()
             .map(|player| (player.name.clone(), player.cards.clone()))
@@ -282,7 +312,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
@@ -320,7 +350,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
@@ -356,7 +386,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Alice plays first card
@@ -404,7 +434,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![Hand::from_cards(&[Card::new(Rank::Five, Suit::Spades)]).unwrap()], // Someone played before
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Alice passes (empty cards vector)
@@ -444,7 +474,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to play a card Alice doesn't have
@@ -483,7 +513,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to play with Bob when it's Alice's turn
@@ -519,7 +549,7 @@ mod tests {
             0, // Alice's turn
             3, // 3 consecutive passes already
             vec![Hand::Pass, Hand::Pass, Hand::Pass],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to pass when 3 consecutive passes already occurred
@@ -552,7 +582,7 @@ mod tests {
             vec![Hand::Single(crate::game::cards::SingleHand::new(
                 Card::new(Rank::King, Suit::Hearts),
             ))], // Previous player played King of Hearts
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to play a weaker card (3D) when King was played
@@ -583,7 +613,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to play a card Alice doesn't have (Ace of Spades)
@@ -624,7 +654,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to play an invalid pair (different ranks)
@@ -674,7 +704,7 @@ mod tests {
                 Hand::Pass,
                 Hand::Pass,
             ],
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Alice passes (making it 3 consecutive passes)
@@ -749,7 +779,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Try to play without 3 of diamonds - should fail
@@ -783,7 +813,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Play with 3 of diamonds - should succeed
@@ -816,7 +846,7 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Play a pair that includes 3 of diamonds - should succeed
@@ -844,7 +874,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
-                cards: vec![Card::new(Rank::Six, Suit::Clubs)],
+                cards: vec![Card::new(Rank::Four, Suit::Clubs)],
             },
         ];
 
@@ -854,16 +884,18 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_starting_hands(&players),
+            create_player_starting_hands(&players),
         );
 
         // Alice plays 3 of diamonds successfully
         let result1 = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result1.is_ok());
+        assert_eq!(game.current_player_turn(), "Bob"); // Should be Bob's turn
 
-        // Bob should be able to play any valid card (not requiring 3 of diamonds)
-        let result2 = game.play_cards("Bob", &[Card::new(Rank::Six, Suit::Clubs)]);
+        // Bob should be able to play any valid card that beats 3♦ or just pass
+        let result2 = game.play_cards("Bob", &[Card::new(Rank::Four, Suit::Clubs)]);
         assert!(result2.is_ok());
-        assert_eq!(game.current_player_turn(), "Alice"); // Turn should advance back to Alice
+        // In a 2-player game, after both players play once, it cycles back to Alice (0 -> 1 -> 0)
+        assert_eq!(game.current_player_turn(), "Alice");
     }
 }
