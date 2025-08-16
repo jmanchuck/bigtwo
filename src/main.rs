@@ -3,6 +3,7 @@ mod game;
 mod room;
 mod session;
 mod shared;
+mod user;
 mod websockets;
 
 use axum::{
@@ -24,7 +25,9 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::websockets::InMemoryConnectionManager;
-use crate::{event::EventBus, game::GameService};
+use crate::{
+    event::EventBus, game::GameService, user::mapping_service::InMemoryPlayerMappingService,
+};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -61,7 +64,11 @@ async fn main() {
             Arc::new(InMemorySessionRepository::new())
         };
 
-    let session_service = Arc::new(SessionService::new(session_repository.clone()));
+    let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+    let session_service = Arc::new(SessionService::new(
+        session_repository.clone(),
+        player_mapping.clone(),
+    ));
     let room_repository = Arc::new(InMemoryRoomRepository::new());
     let room_service = Arc::new(RoomService::new(room_repository));
     let event_bus = EventBus::new();
@@ -75,6 +82,7 @@ async fn main() {
         event_bus,
         connection_manager,
         game_service,
+        player_mapping,
     );
 
     // Configure CORS for development
