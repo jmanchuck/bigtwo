@@ -57,6 +57,11 @@ impl Game {
     }
 
     pub fn new_game(id: String, player_names: &[String]) -> Result<Self, GameError> {
+        // Big Two requires exactly 4 players
+        if player_names.len() != 4 {
+            return Err(GameError::InvalidPlayedCards);
+        }
+
         // Randomly deal the 52 cards to the players
         let mut cards = Card::all_cards();
         cards.shuffle(&mut rand::rng());
@@ -86,6 +91,34 @@ impl Game {
             .ok_or(GameError::InvalidPlayedCards)?;
 
         players.rotate_left(first_player);
+
+        Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
+    }
+
+    pub fn new_with_cards(
+        id: String,
+        player_cards: Vec<(String, Vec<Card>)>,
+    ) -> Result<Self, GameError> {
+        // Create players with predetermined cards
+        let mut players = Vec::new();
+        let mut starting_hands = std::collections::HashMap::new();
+
+        for (name, cards) in &player_cards {
+            players.push(Player {
+                name: name.clone(),
+                cards: cards.clone(),
+            });
+            starting_hands.insert(name.clone(), cards.clone());
+        }
+
+        // Find who has 3D (they go first)
+        let first_player_index = players
+            .iter()
+            .position(|p| p.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)))
+            .ok_or(GameError::InvalidPlayedCards)?;
+
+        // Rotate players so the one with 3D is first
+        players.rotate_left(first_player_index);
 
         Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
     }

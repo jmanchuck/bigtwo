@@ -3,7 +3,7 @@ use tokio::task::JoinHandle;
 
 use bigtwo::{
     event::{EventBus, RoomSubscription},
-    game::{GameEventRoomSubscriber, GameManager},
+    game::{GameEventRoomSubscriber, GameService},
     room::{
         models::RoomModel,
         repository::{InMemoryRoomRepository, RoomRepository},
@@ -22,7 +22,7 @@ pub struct TestSetup {
     pub event_bus: EventBus,
     pub mock_conn_manager: Arc<MockConnectionManager>,
     pub input_handler: WebsocketReceiveHandler,
-    pub game_manager: Arc<GameManager>,
+    pub game_service: Arc<GameService>,
     pub players: Vec<String>,
     pub _subscription_handle: JoinHandle<()>,
 }
@@ -57,7 +57,7 @@ impl TestSetupBuilder {
         let event_bus = EventBus::new();
         let repo = Arc::new(InMemoryRoomRepository::new());
         let mock_conn_manager = Arc::new(MockConnectionManager::new());
-        let game_manager = Arc::new(GameManager::new());
+        let game_service = Arc::new(GameService::new());
 
         // Create room
         let room = RoomModel {
@@ -80,7 +80,7 @@ impl TestSetupBuilder {
         let input_handler = WebsocketReceiveHandler::new(event_bus.clone());
 
         // Create game event subscriber to handle game logic
-        let game_subscriber = GameEventRoomSubscriber::new(game_manager.clone(), event_bus.clone());
+        let game_subscriber = GameEventRoomSubscriber::new(game_service.clone(), event_bus.clone());
 
         let game_subscription = RoomSubscription::new(
             self.room_id.clone(),
@@ -94,7 +94,7 @@ impl TestSetupBuilder {
         let output_subscriber = WebSocketRoomSubscriber::new(
             room_service,
             mock_conn_manager.clone(),
-            game_manager.clone(),
+            game_service.clone(),
             event_bus.clone(),
         );
 
@@ -109,7 +109,7 @@ impl TestSetupBuilder {
             event_bus,
             mock_conn_manager,
             input_handler,
-            game_manager,
+            game_service,
             players: self.players,
             _subscription_handle: subscription_handle,
         }

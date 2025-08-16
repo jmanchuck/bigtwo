@@ -2,27 +2,21 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::game::logic::{Game, GameError};
+use crate::game::core::{Game, GameError};
 use crate::shared::AppError;
 
-enum RoomState {
-    Lobby,
-    InGame(Game),
-    Completed(Game),
-}
-
-pub struct GameManager {
+pub struct GameRepository {
     /// A mapping from room ID to game
     games: Arc<RwLock<HashMap<String, Game>>>,
 }
 
-impl Default for GameManager {
+impl Default for GameRepository {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl GameManager {
+impl GameRepository {
     pub fn new() -> Self {
         Self {
             games: Arc::new(RwLock::new(HashMap::new())),
