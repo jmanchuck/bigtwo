@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{
     game::{cards::Card, core::Game, repository::GameRepository},
     shared::AppError,
@@ -24,6 +22,35 @@ impl GameService {
 
     /// Create a new game for the specified room with the given players
     pub async fn create_game(&self, room_id: &str, players: &[String]) -> Result<Game, AppError> {
+        // Input validation
+        if room_id.trim().is_empty() {
+            return Err(AppError::BadRequest("Room ID cannot be empty".to_string()));
+        }
+
+        if players.len() != 4 {
+            return Err(AppError::BadRequest(
+                "Big Two requires exactly 4 players".to_string(),
+            ));
+        }
+
+        for player in players {
+            if player.trim().is_empty() {
+                return Err(AppError::BadRequest(
+                    "Player names cannot be empty".to_string(),
+                ));
+            }
+        }
+
+        // Check for duplicate player names
+        let mut unique_players = std::collections::HashSet::new();
+        for player in players {
+            if !unique_players.insert(player.trim()) {
+                return Err(AppError::BadRequest(
+                    "All player names must be unique".to_string(),
+                ));
+            }
+        }
+
         self.game_repository
             .create_game(room_id, players)
             .await
@@ -76,7 +103,7 @@ impl GameService {
         player_cards: Vec<(String, Vec<Card>)>,
     ) -> Result<Game, AppError> {
         let game = Game::new_with_cards(room_id.to_string(), player_cards)
-            .map_err(|_e| AppError::Internal)?;
+            .map_err(|e| AppError::BadRequest(format!("Invalid game setup: {}", e)))?;
 
         self.game_repository
             .update_game(room_id, game.clone())

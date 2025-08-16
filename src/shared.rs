@@ -58,6 +58,9 @@ pub enum AppError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
     #[error("Internal server error")]
     Internal,
 }
@@ -71,6 +74,7 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Database error: {}", msg),
             ),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
