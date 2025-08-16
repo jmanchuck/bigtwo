@@ -11,7 +11,7 @@ use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
 use crate::session::service::SessionService;
 use crate::websockets::ConnectionManager;
-use crate::{event::EventBus, game::GameManager};
+use crate::{event::EventBus, game::GameService};
 
 /// Shared application state containing all dependencies
 #[derive(Clone)]
@@ -21,7 +21,7 @@ pub struct AppState {
     pub room_service: Arc<RoomService>,
     pub event_bus: EventBus,
     pub connection_manager: Arc<dyn ConnectionManager>,
-    pub game_manager: Arc<GameManager>,
+    pub game_service: Arc<GameService>,
 }
 
 impl AppState {
@@ -31,7 +31,7 @@ impl AppState {
         room_service: Arc<RoomService>,
         event_bus: EventBus,
         connection_manager: Arc<dyn ConnectionManager>,
-        game_manager: Arc<GameManager>,
+        game_service: Arc<GameService>,
     ) -> Self {
         Self {
             session_repository,
@@ -39,7 +39,7 @@ impl AppState {
             room_service,
             event_bus,
             connection_manager,
-            game_manager,
+            game_service,
         }
     }
 }
@@ -180,7 +180,7 @@ pub mod test_utils {
         session_service: Option<Arc<SessionService>>,
         room_service: Option<Arc<RoomService>>,
         connection_manager: Option<Arc<dyn ConnectionManager>>,
-        game_manager: Option<Arc<GameManager>>,
+        game_service: Option<Arc<GameService>>,
     }
 
     impl AppStateBuilder {
@@ -190,7 +190,7 @@ pub mod test_utils {
                 session_service: None,
                 room_service: None,
                 connection_manager: None,
-                game_manager: None,
+                game_service: None,
             }
         }
 
@@ -224,8 +224,8 @@ pub mod test_utils {
             self
         }
 
-        pub fn with_game_manager(mut self, manager: Arc<GameManager>) -> Self {
-            self.game_manager = Some(manager);
+        pub fn with_game_service(mut self, service: Arc<GameService>) -> Self {
+            self.game_service = Some(service);
             self
         }
 
@@ -240,6 +240,10 @@ pub mod test_utils {
                 .room_service
                 .unwrap_or_else(|| Arc::new(RoomService::new(Arc::new(DummyRoomRepository))));
 
+            let game_service = self
+                .game_service
+                .unwrap_or_else(|| Arc::new(GameService::new()));
+
             AppState {
                 session_repository,
                 session_service,
@@ -248,9 +252,7 @@ pub mod test_utils {
                 connection_manager: self
                     .connection_manager
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
-                game_manager: self
-                    .game_manager
-                    .unwrap_or_else(|| Arc::new(GameManager::new())),
+                game_service,
             }
         }
     }

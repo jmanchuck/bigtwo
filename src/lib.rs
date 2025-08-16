@@ -10,7 +10,7 @@ pub mod websockets;
 
 // Re-export commonly used types for easier access in tests
 pub use event::{EventBus, RoomEvent, RoomSubscription};
-pub use game::GameManager;
+pub use game::GameService;
 pub use room::{models::RoomModel, repository::RoomRepository};
 pub use shared::AppError;
 pub use websockets::{

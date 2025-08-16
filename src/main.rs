@@ -24,7 +24,7 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::websockets::InMemoryConnectionManager;
-use crate::{event::EventBus, game::GameManager};
+use crate::{event::EventBus, game::GameService};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -66,7 +66,7 @@ async fn main() {
     let room_service = Arc::new(RoomService::new(room_repository));
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
-    let game_manager = Arc::new(GameManager::new());
+    let game_service = Arc::new(GameService::new());
 
     let app_state = AppState::new(
         session_repository,
@@ -74,7 +74,7 @@ async fn main() {
         room_service,
         event_bus,
         connection_manager,
-        game_manager,
+        game_service,
     );
 
     // Configure CORS for development

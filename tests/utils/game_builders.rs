@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bigtwo::{
     event::RoomSubscription,
-    game::{Card, Game, GameEventRoomSubscriber, Player, Rank, Suit},
+    game::{Card, GameEventRoomSubscriber, Rank, Suit},
 };
 
 use super::setup::TestSetup;
@@ -33,8 +33,8 @@ impl GameBuilder {
         }
     }
 
-    /// Create a simple two-player game scenario
-    pub fn with_simple_two_player_game(self) -> Self {
+    /// Create a simple four-player game scenario
+    pub fn with_simple_four_player_game(self) -> Self {
         self.with_cards(vec![
             (
                 "alice",
@@ -50,6 +50,22 @@ impl GameBuilder {
                     Card::new(Rank::Six, Suit::Clubs),
                     Card::new(Rank::Seven, Suit::Diamonds),
                     Card::new(Rank::Eight, Suit::Hearts),
+                ],
+            ),
+            (
+                "charlie",
+                vec![
+                    Card::new(Rank::Nine, Suit::Spades),
+                    Card::new(Rank::Ten, Suit::Clubs),
+                    Card::new(Rank::Jack, Suit::Diamonds),
+                ],
+            ),
+            (
+                "david",
+                vec![
+                    Card::new(Rank::Queen, Suit::Hearts),
+                    Card::new(Rank::King, Suit::Spades),
+                    Card::new(Rank::Ace, Suit::Clubs),
                 ],
             ),
         ])
@@ -74,6 +90,22 @@ impl GameBuilder {
                     Card::new(Rank::Five, Suit::Clubs),
                 ],
             ), // Bob has 3D (goes first) and pair of 5s
+            (
+                "charlie",
+                vec![
+                    Card::new(Rank::Seven, Suit::Spades),
+                    Card::new(Rank::Eight, Suit::Clubs),
+                    Card::new(Rank::Nine, Suit::Diamonds),
+                ],
+            ),
+            (
+                "david",
+                vec![
+                    Card::new(Rank::Ten, Suit::Hearts),
+                    Card::new(Rank::Jack, Suit::Spades),
+                    Card::new(Rank::Queen, Suit::Clubs),
+                ],
+            ),
         ])
     }
 
@@ -88,41 +120,26 @@ impl GameBuilder {
 
     /// Build the game and return the first player's name
     pub async fn build_with_setup(self, setup: &TestSetup) -> String {
-        let players: Vec<Player> = self
-            .player_cards
-            .into_iter()
-            .map(|(name, cards)| Player { name, cards })
-            .collect();
+        let first_player_name = if self.player_cards.is_empty() {
+            // No custom cards specified - use standard random dealing
+            let player_names = setup.players.clone();
+            setup
+                .game_service
+                .create_game("room-123", &player_names)
+                .await
+                .unwrap();
 
-        let first_player_index = players
-            .iter()
-            .position(|p| p.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)))
-            .expect("One player must have 3D");
-
-        let first_player_name = players[first_player_index].name.clone();
-
-        let starting_hands = players
-            .iter()
-            .map(|player| (player.name.clone(), player.cards.clone()))
-            .collect();
-
-        let game = Game::new(
-            "room-123".to_string(),
-            players,
-            first_player_index,
-            0,
-            vec![],
-            starting_hands,
-        );
-        setup
-            .game_manager
-            .update_game("room-123", game)
-            .await
-            .unwrap();
+            // Get the game to find who has 3D (they go first)
+            let game = setup.game_service.get_game("room-123").await.unwrap();
+            game.current_player_turn()
+        } else {
+            // Custom cards specified - create game with predetermined cards
+            self.create_custom_game(setup).await
+        };
 
         // Setup game event subscriber
         let game_event_subscriber = Arc::new(GameEventRoomSubscriber::new(
-            setup.game_manager.clone(),
+            setup.game_service.clone(),
             setup.event_bus.clone(),
         ));
         let game_subscription = RoomSubscription::new(
@@ -133,5 +150,17 @@ impl GameBuilder {
         let _handle = game_subscription.start().await;
 
         first_player_name
+    }
+
+    async fn create_custom_game(&self, setup: &TestSetup) -> String {
+        // Use the new public API to create game with predetermined cards
+        let game = setup
+            .game_service
+            .create_game_with_cards("room-123", self.player_cards.clone())
+            .await
+            .unwrap();
+
+        // Return the name of the first player (who has 3D)
+        game.current_player_turn()
     }
 }

@@ -4,7 +4,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler, RoomSubscription},
-    game::{Card, Game, GameEventRoomSubscriber, GameManager},
+    game::{Card, Game, GameEventRoomSubscriber, GameService},
     room::{repository::LeaveRoomResult, service::RoomService},
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
@@ -18,7 +18,7 @@ use crate::{
 pub struct WebSocketRoomSubscriber {
     room_service: Arc<RoomService>,
     connection_manager: Arc<dyn ConnectionManager>,
-    game_manager: Arc<GameManager>,
+    game_service: Arc<GameService>,
     event_bus: EventBus,
 }
 
@@ -83,13 +83,13 @@ impl WebSocketRoomSubscriber {
     pub fn new(
         room_service: Arc<RoomService>,
         connection_manager: Arc<dyn ConnectionManager>,
-        game_manager: Arc<GameManager>,
+        game_service: Arc<GameService>,
         event_bus: crate::event::EventBus,
     ) -> Self {
         Self {
             room_service,
             connection_manager,
-            game_manager,
+            game_service,
             event_bus,
         }
     }
@@ -434,7 +434,7 @@ impl WebSocketRoomSubscriber {
 
         // Create the GameEventRoomSubscriber
         let game_event_room_subscriber = Arc::new(GameEventRoomSubscriber::new(
-            Arc::clone(&self.game_manager),
+            Arc::clone(&self.game_service),
             self.event_bus.clone(),
         ));
 
@@ -502,7 +502,7 @@ impl WebSocketRoomSubscriber {
 
         // Get current game to find all players
         let game =
-            self.game_manager
+            self.game_service
                 .get_game(room_id)
                 .await
                 .ok_or(RoomEventError::HandlerError(format!(
@@ -542,7 +542,7 @@ impl WebSocketRoomSubscriber {
 
         // Get current game to find all players
         let game =
-            self.game_manager
+            self.game_service
                 .get_game(room_id)
                 .await
                 .ok_or(RoomEventError::HandlerError(format!(
