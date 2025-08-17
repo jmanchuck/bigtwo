@@ -244,7 +244,7 @@ mod tests {
         let room_repository = Arc::new(InMemoryRoomRepository::new());
         let app_state = AppStateBuilder::new()
             .with_room_repository(room_repository)
-            .build();
+            .build_with_test_defaults();
 
         let app = Router::new()
             .route("/rooms", axum::routing::get(list_rooms))
@@ -272,7 +272,7 @@ mod tests {
         let room_repository = Arc::new(InMemoryRoomRepository::new());
         let app_state = AppStateBuilder::new()
             .with_room_repository(room_repository.clone())
-            .build();
+            .build_with_test_defaults();
 
         // Create some rooms first using the service directly
         let service = Arc::clone(&app_state.room_service);
@@ -338,7 +338,7 @@ mod tests {
         let room_repository = Arc::new(InMemoryRoomRepository::new());
         let app_state = AppStateBuilder::new()
             .with_room_repository(room_repository.clone())
-            .build();
+            .build_with_test_defaults();
 
         // Create one room using the service directly
         let service = Arc::clone(&app_state.room_service);
@@ -377,7 +377,7 @@ mod tests {
         let room_repository = Arc::new(InMemoryRoomRepository::new());
         let app_state = AppStateBuilder::new()
             .with_room_repository(room_repository)
-            .build();
+            .build_with_test_defaults();
 
         let app = Router::new()
             .route("/room/:room_id", axum::routing::post(join_room))
@@ -398,7 +398,7 @@ mod tests {
         let room_repository = Arc::new(InMemoryRoomRepository::new());
         let app_state = AppStateBuilder::new()
             .with_room_repository(room_repository.clone())
-            .build();
+            .build_with_test_defaults();
 
         // Create a room and fill it to capacity using the service directly
         let service = Arc::clone(&app_state.room_service);

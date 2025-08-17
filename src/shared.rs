@@ -7,6 +7,7 @@ use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::room::repository::RoomRepository;
 use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
 use crate::session::service::SessionService;
@@ -44,6 +45,181 @@ impl AppState {
             game_service,
             player_mapping,
         }
+    }
+
+    /// Create a new AppStateBuilder for flexible construction
+    pub fn builder() -> AppStateBuilder {
+        AppStateBuilder::new()
+    }
+}
+
+/// Builder for creating AppState with type-safe construction and validation
+pub struct AppStateBuilder {
+    session_repository: Option<Arc<dyn SessionRepository + Send + Sync>>,
+    session_service: Option<Arc<SessionService>>,
+    room_service: Option<Arc<RoomService>>,
+    connection_manager: Option<Arc<dyn ConnectionManager>>,
+    game_service: Option<Arc<GameService>>,
+    player_mapping: Option<Arc<dyn PlayerMappingService>>,
+    event_bus: Option<EventBus>,
+}
+
+#[derive(Error, Debug)]
+pub enum AppStateBuilderError {
+    #[error("Missing required dependency: {0}")]
+    MissingDependency(&'static str),
+}
+
+impl AppStateBuilder {
+    /// Create a new builder
+    pub fn new() -> Self {
+        Self {
+            session_repository: None,
+            session_service: None,
+            room_service: None,
+            connection_manager: None,
+            game_service: None,
+            player_mapping: None,
+            event_bus: None,
+        }
+    }
+
+    pub fn with_session_repository(
+        mut self,
+        repo: Arc<dyn SessionRepository + Send + Sync>,
+    ) -> Self {
+        self.session_repository = Some(repo);
+        self
+    }
+
+    pub fn with_session_service(mut self, service: Arc<SessionService>) -> Self {
+        self.session_service = Some(service);
+        self
+    }
+
+    pub fn with_room_service(mut self, service: Arc<RoomService>) -> Self {
+        self.room_service = Some(service);
+        self
+    }
+
+    /// Convenience method for providing a room repository
+    /// This creates a RoomService with the given repository and player mapping
+    pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
+        let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
+        });
+        self.room_service = Some(Arc::new(RoomService::new(repo, player_mapping.clone())));
+        // Ensure the player_mapping is stored for later use
+        self.player_mapping = Some(player_mapping);
+        self
+    }
+
+    pub fn with_connection_manager(mut self, manager: Arc<dyn ConnectionManager>) -> Self {
+        self.connection_manager = Some(manager);
+        self
+    }
+
+    pub fn with_game_service(mut self, service: Arc<GameService>) -> Self {
+        self.game_service = Some(service);
+        self
+    }
+
+    pub fn with_player_mapping(mut self, mapping: Arc<dyn PlayerMappingService>) -> Self {
+        self.player_mapping = Some(mapping);
+        self
+    }
+
+    pub fn with_event_bus(mut self, event_bus: EventBus) -> Self {
+        self.event_bus = Some(event_bus);
+        self
+    }
+
+    /// Build AppState with validation
+    pub fn build(self) -> Result<AppState, AppStateBuilderError> {
+        let session_repository = self
+            .session_repository
+            .ok_or(AppStateBuilderError::MissingDependency("session_repository"))?;
+        let player_mapping = self
+            .player_mapping
+            .ok_or(AppStateBuilderError::MissingDependency("player_mapping"))?;
+        let session_service = self.session_service.ok_or_else(|| {
+            AppStateBuilderError::MissingDependency("session_service")
+        })?;
+        let room_service = self
+            .room_service
+            .ok_or(AppStateBuilderError::MissingDependency("room_service"))?;
+        let event_bus = self
+            .event_bus
+            .unwrap_or_else(|| EventBus::new());
+        let connection_manager = self
+            .connection_manager
+            .ok_or(AppStateBuilderError::MissingDependency("connection_manager"))?;
+        let game_service = self
+            .game_service
+            .ok_or(AppStateBuilderError::MissingDependency("game_service"))?;
+
+        Ok(AppState {
+            session_repository,
+            session_service,
+            room_service,
+            event_bus,
+            connection_manager,
+            game_service,
+            player_mapping,
+        })
+    }
+
+    /// Build AppState without validation (for backward compatibility)
+    /// This method provides defaults for missing dependencies
+    #[cfg(test)]
+    pub fn build_with_defaults(self) -> AppState {
+        use crate::user::mapping_service::InMemoryPlayerMappingService;
+        
+        let player_mapping = self.player_mapping.unwrap_or_else(|| {
+            Arc::new(InMemoryPlayerMappingService::new())
+        });
+
+        let session_repository = self.session_repository.unwrap_or_else(|| {
+            Arc::new(crate::session::repository::InMemorySessionRepository::new())
+        });
+
+        let session_service = self.session_service.unwrap_or_else(|| {
+            Arc::new(SessionService::new(
+                session_repository.clone(),
+                player_mapping.clone(),
+            ))
+        });
+
+        let room_service = self.room_service.unwrap_or_else(|| {
+            Arc::new(RoomService::new(
+                Arc::new(crate::room::repository::InMemoryRoomRepository::new()),
+                player_mapping.clone(),
+            ))
+        });
+
+        let game_service = self
+            .game_service
+            .unwrap_or_else(|| Arc::new(GameService::new(player_mapping.clone())));
+
+        let connection_manager = self.connection_manager.unwrap_or_else(|| {
+            Arc::new(crate::websockets::InMemoryConnectionManager::new())
+        });
+
+        AppState {
+            session_repository,
+            session_service,
+            room_service,
+            event_bus: self.event_bus.unwrap_or_else(|| EventBus::new()),
+            connection_manager,
+            game_service,
+            player_mapping,
+        }
+    }
+}
+
+impl Default for AppStateBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -181,78 +357,16 @@ pub mod test_utils {
         async fn send_to_players(&self, _usernames: &[String], _message: &str) {}
     }
 
-    /// Builder for creating AppState with overrides for testing
-    pub struct AppStateBuilder {
-        session_repository: Option<Arc<dyn SessionRepository + Send + Sync>>,
-        session_service: Option<Arc<SessionService>>,
-        room_service: Option<Arc<RoomService>>,
-        connection_manager: Option<Arc<dyn ConnectionManager>>,
-        game_service: Option<Arc<GameService>>,
-        player_mapping: Option<Arc<dyn PlayerMappingService>>,
-    }
+    /// Test-specific builder that extends the main AppStateBuilder with test defaults
+    pub type AppStateBuilder = super::AppStateBuilder;
 
     impl AppStateBuilder {
-        pub fn new() -> Self {
-            Self {
-                session_repository: None,
-                session_service: None,
-                room_service: None,
-                connection_manager: None,
-                game_service: None,
-                player_mapping: None,
-            }
-        }
-
-        pub fn with_session_repository(
-            mut self,
-            repo: Arc<dyn SessionRepository + Send + Sync>,
-        ) -> Self {
-            self.session_repository = Some(repo);
-            self
-        }
-
-        pub fn with_session_service(mut self, service: Arc<SessionService>) -> Self {
-            self.session_service = Some(service);
-            self
-        }
-
-        pub fn with_room_service(mut self, service: Arc<RoomService>) -> Self {
-            self.room_service = Some(service);
-            self
-        }
-
-        /// Convenience method for tests that want to provide a room repository
-        /// This creates a RoomService with the given repository
-        pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
-            let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
-                Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
-            });
-            self.room_service = Some(Arc::new(RoomService::new(repo, player_mapping.clone())));
-            // Ensure the player_mapping is stored for later use
-            self.player_mapping = Some(player_mapping);
-            self
-        }
-
-        pub fn with_connection_manager(mut self, manager: Arc<dyn ConnectionManager>) -> Self {
-            self.connection_manager = Some(manager);
-            self
-        }
-
-        pub fn with_game_service(mut self, service: Arc<GameService>) -> Self {
-            self.game_service = Some(service);
-            self
-        }
-
-        pub fn with_player_mapping(mut self, mapping: Arc<dyn PlayerMappingService>) -> Self {
-            self.player_mapping = Some(mapping);
-            self
-        }
-
-        pub fn build(self) -> AppState {
+        /// Build AppState with test defaults for missing dependencies
+        pub fn build_with_test_defaults(self) -> AppState {
             let session_repository = self
                 .session_repository
                 .unwrap_or_else(|| Arc::new(DummySessionRepository));
-            let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
+            let player_mapping = self.player_mapping.unwrap_or_else(|| {
                 Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
             });
             let session_service = self.session_service.unwrap_or_else(|| {
@@ -262,12 +376,9 @@ pub mod test_utils {
                 ))
             });
             let room_service = self.room_service.unwrap_or_else(|| {
-                let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
-                    Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
-                });
                 Arc::new(RoomService::new(
                     Arc::new(DummyRoomRepository),
-                    player_mapping,
+                    player_mapping.clone(),
                 ))
             });
 
@@ -279,19 +390,13 @@ pub mod test_utils {
                 session_repository,
                 session_service,
                 room_service,
-                event_bus: EventBus::new(),
+                event_bus: self.event_bus.unwrap_or_else(|| EventBus::new()),
                 connection_manager: self
                     .connection_manager
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
                 game_service,
                 player_mapping,
             }
-        }
-    }
-
-    impl Default for AppStateBuilder {
-        fn default() -> Self {
-            Self::new()
         }
     }
 }

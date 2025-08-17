@@ -75,15 +75,16 @@ async fn main() {
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
     let game_service = Arc::new(GameService::new(player_mapping.clone()));
 
-    let app_state = AppState::new(
-        session_repository,
-        session_service,
-        room_service,
-        event_bus,
-        connection_manager,
-        game_service,
-        player_mapping,
-    );
+    let app_state = AppState::builder()
+        .with_session_repository(session_repository)
+        .with_session_service(session_service)
+        .with_room_service(room_service)
+        .with_event_bus(event_bus)
+        .with_connection_manager(connection_manager)
+        .with_game_service(game_service)
+        .with_player_mapping(player_mapping)
+        .build()
+        .expect("Failed to build AppState - all required dependencies should be provided");
 
     // Configure CORS for development
     let cors = CorsLayer::new()

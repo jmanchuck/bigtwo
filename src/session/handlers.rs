@@ -59,7 +59,7 @@ mod tests {
         let session_repository = Arc::new(InMemorySessionRepository::new());
         let app_state = AppStateBuilder::new()
             .with_session_repository(session_repository)
-            .build();
+            .build_with_test_defaults();
 
         // Create router with our handler
         let app = Router::new()
