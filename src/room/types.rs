@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-/// Request payload for creating a new room
+/// External request payload for creating a new room (no data needed)
+#[derive(Debug, Deserialize)]
+pub struct CreateRoomApiRequest {
+    // Currently empty - room creation is based on authenticated session
+}
+
+/// Internal request payload for creating a new room
 #[derive(Debug, Deserialize)]
 pub struct RoomCreateRequest {
-    pub host_name: String,
+    pub host_uuid: String, // Populated from authenticated session
 }
 
 /// Request payload for joining a room

@@ -12,7 +12,9 @@ use utils::*;
 async fn test_game_start_requires_host_and_four_players() {
     let setup = TestSetupBuilder::new().with_four_players().build().await;
 
-    setup.send_start_game("alice").await; // alice is host
+    setup
+        .send_start_game("550e8400-e29b-41d4-a716-446655440000")
+        .await; // alice is host
 
     MessageAssertion::for_all_players(&setup)
         .received_message_type(MessageType::GameStarted)
@@ -24,7 +26,9 @@ async fn test_game_start_requires_host_and_four_players() {
 async fn test_non_host_cannot_start_game() {
     let setup = TestSetupBuilder::new().with_four_players().build().await;
 
-    setup.send_start_game("bob").await; // bob is not host
+    setup
+        .send_start_game("550e8400-e29b-41d4-a716-446655440001")
+        .await; // bob is not host
 
     MessageAssertion::for_all_players(&setup)
         .received_no_messages()
@@ -35,7 +39,9 @@ async fn test_non_host_cannot_start_game() {
 async fn test_insufficient_players_cannot_start_game() {
     let setup = TestSetupBuilder::new().with_two_players().build().await;
 
-    setup.send_start_game("alice").await;
+    setup
+        .send_start_game("550e8400-e29b-41d4-a716-446655440000")
+        .await;
 
     MessageAssertion::for_all_players(&setup)
         .received_no_messages()
@@ -163,9 +169,9 @@ async fn test_wrong_turn_player_cannot_move() {
     let wrong_player = game
         .players()
         .iter()
-        .find(|p| p.name != first_player)
+        .find(|p| p.uuid != first_player)
         .unwrap()
-        .name
+        .uuid
         .clone();
     setup.send_move(&wrong_player, vec!["4H"]).await;
 
@@ -202,7 +208,7 @@ async fn test_player_join_event_notifies_existing_players() {
 
     setup
         .emit_event(RoomEvent::PlayerJoined {
-            player: "charlie".to_string(),
+            player: "550e8400-e29b-41d4-a716-446655440002".to_string(),
         })
         .await;
 
@@ -228,7 +234,7 @@ async fn test_first_player_can_play_anything_after_all_others_pass() {
     let other_players: Vec<String> = game
         .players()
         .iter()
-        .map(|p| p.name.clone())
+        .map(|p| p.uuid.clone())
         .filter(|name| name != &first_player)
         .collect();
 
@@ -261,7 +267,7 @@ async fn test_first_player_can_change_combination_type_after_all_pass() {
     let other_players: Vec<String> = game
         .players()
         .iter()
-        .map(|p| p.name.clone())
+        .map(|p| p.uuid.clone())
         .filter(|name| name != &first_player)
         .collect();
 

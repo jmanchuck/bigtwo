@@ -6,34 +6,47 @@ use super::{
     repository::{JoinRoomResult, LeaveRoomResult, RoomRepository},
     types::{RoomCreateRequest, RoomResponse},
 };
-use crate::shared::AppError;
+use crate::{shared::AppError, user::PlayerMappingService};
 
 /// Service for handling room business logic
 pub struct RoomService {
     repository: Arc<dyn RoomRepository + Send + Sync>,
+    player_mapping: Arc<dyn PlayerMappingService>,
 }
 
 impl RoomService {
-    pub fn new(repository: Arc<dyn RoomRepository + Send + Sync>) -> Self {
-        Self { repository }
+    pub fn new(
+        repository: Arc<dyn RoomRepository + Send + Sync>,
+        player_mapping: Arc<dyn PlayerMappingService>,
+    ) -> Self {
+        Self {
+            repository,
+            player_mapping,
+        }
     }
 
     /// Creates a new room with a generated ID
     #[instrument(skip(self))]
     pub async fn create_room(&self, request: RoomCreateRequest) -> Result<RoomResponse, AppError> {
-        debug!(host_name = %request.host_name, "Creating new room");
-
         // Create room model with generated ID
-        let room_model = RoomModel::new(request.host_name);
+        let room_model = RoomModel::new(request.host_uuid);
         debug!(room_id = %room_model.id, "Generated room ID");
 
         // Store room in repository
         self.repository.create_room(&room_model).await?;
 
+        // Map host UUID to display name
+        let host_uuid = room_model.host_uuid.clone().unwrap();
+        let host_name = self
+            .player_mapping
+            .get_playername(&host_uuid)
+            .await
+            .unwrap_or(host_uuid);
+
         // Convert to response format
         let room_response = RoomResponse {
             id: room_model.id.clone(),
-            host_name: room_model.host_name.clone(),
+            host_name,
             status: room_model.status.clone(),
             player_count: room_model.get_player_count(),
         };
@@ -56,9 +69,17 @@ impl RoomService {
             .await?
             .ok_or(AppError::DatabaseError("Room not found".to_string()))?;
 
+        // Map host UUID to display name
+        let host_uuid = room.host_uuid.clone().unwrap();
+        let host_name = self
+            .player_mapping
+            .get_playername(&host_uuid)
+            .await
+            .unwrap_or(host_uuid);
+
         Ok(RoomResponse {
             id: room.id.clone(),
-            host_name: room.host_name.clone(),
+            host_name,
             status: room.status.clone(),
             player_count: room.get_player_count(),
         })
@@ -81,16 +102,24 @@ impl RoomService {
 
         info!(room_count = rooms.len(), "Rooms retrieved successfully");
 
-        // Convert to response format
-        let room_responses = rooms
-            .into_iter()
-            .map(|room| RoomResponse {
+        // Convert to response format with UUID-to-name mapping
+        let mut room_responses = Vec::new();
+        for room in rooms {
+            // Map host UUID to display name
+            let host_uuid = room.host_uuid.clone().unwrap();
+            let host_name = self
+                .player_mapping
+                .get_playername(&host_uuid)
+                .await
+                .unwrap_or(host_uuid);
+
+            room_responses.push(RoomResponse {
                 id: room.id.clone(),
-                host_name: room.host_name.clone(),
+                host_name,
                 status: room.status.clone(),
                 player_count: room.get_player_count(),
-            })
-            .collect();
+            });
+        }
 
         Ok(room_responses)
     }
@@ -100,27 +129,35 @@ impl RoomService {
     pub async fn join_room(
         &self,
         room_id: String,
-        player_name: String,
+        player_uuid: String,
     ) -> Result<RoomResponse, AppError> {
-        info!(room_id = %room_id, player_name = %player_name, "Attempting to join room");
+        info!(room_id = %room_id, player_name = %player_uuid, "Attempting to join room");
 
         // Use the atomic try_join_room method
         let result = self
             .repository
-            .try_join_room(&room_id, &player_name)
+            .try_join_room(&room_id, &player_uuid)
             .await?;
 
         match result {
             JoinRoomResult::Success(updated_room) => {
                 info!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_name = %player_uuid,
                     new_player_count = updated_room.get_player_count(),
                     "Player joined room successfully"
                 );
+                // Map host UUID to display name
+                let host_uuid = updated_room.host_uuid.clone().unwrap();
+                let host_name = self
+                    .player_mapping
+                    .get_playername(&host_uuid)
+                    .await
+                    .unwrap_or(host_uuid);
+
                 Ok(RoomResponse {
                     id: updated_room.id.clone(),
-                    host_name: updated_room.host_name.clone(),
+                    host_name,
                     status: updated_room.status.clone(),
                     player_count: updated_room.get_player_count(),
                 })
@@ -137,18 +174,18 @@ impl RoomService {
     pub async fn leave_room(
         &self,
         room_id: String,
-        player_name: String,
+        player_uuid: String,
     ) -> Result<LeaveRoomResult, AppError> {
-        debug!(room_id = %room_id, player_name = %player_name, "Attempting to leave room");
+        debug!(room_id = %room_id, player_uuid = %player_uuid, "Attempting to leave room");
 
         // Use the atomic leave_room method
-        let result = self.repository.leave_room(&room_id, &player_name).await?;
+        let result = self.repository.leave_room(&room_id, &player_uuid).await?;
 
         match &result {
             LeaveRoomResult::Success(updated_room) => {
                 info!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     new_player_count = updated_room.get_player_count(),
                     "Player left room successfully"
                 );
@@ -156,21 +193,21 @@ impl RoomService {
             LeaveRoomResult::RoomDeleted => {
                 info!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     "Room deleted after last player left"
                 );
             }
             LeaveRoomResult::PlayerNotInRoom => {
                 debug!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     "Player was not in room"
                 );
             }
             LeaveRoomResult::RoomNotFound => {
                 debug!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     "Room not found"
                 );
             }
@@ -188,10 +225,20 @@ mod tests {
     #[tokio::test]
     async fn test_create_room_success() {
         let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        // Add mapping for test UUID
+        player_mapping
+            .register_player(
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                "test-host".to_string(),
+            )
+            .await
+            .unwrap();
+        let service = RoomService::new(repo.clone(), player_mapping.clone());
 
         let request = RoomCreateRequest {
-            host_name: "test-host".to_string(),
+            host_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         };
 
         let result = service.create_room(request).await;
@@ -206,19 +253,39 @@ mod tests {
         // Verify room was actually stored in repository by trying to get it
         let stored_room = repo.get_room(&response.id).await.unwrap();
         assert!(stored_room.is_some());
-        assert_eq!(stored_room.unwrap().host_name, "test-host");
+        assert_eq!(
+            stored_room.unwrap().host_uuid,
+            Some("550e8400-e29b-41d4-a716-446655440000".to_string()) // Should store the UUID, not the name
+        );
     }
 
     #[tokio::test]
     async fn test_create_room_generates_unique_ids() {
         let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        // Add mappings for test UUIDs
+        player_mapping
+            .register_player(
+                "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                "host-1".to_string(),
+            )
+            .await
+            .unwrap();
+        player_mapping
+            .register_player(
+                "550e8400-e29b-41d4-a716-446655440002".to_string(),
+                "host-2".to_string(),
+            )
+            .await
+            .unwrap();
+        let service = RoomService::new(repo.clone(), player_mapping.clone());
 
         let request1 = RoomCreateRequest {
-            host_name: "host-1".to_string(),
+            host_uuid: "550e8400-e29b-41d4-a716-446655440001".to_string(),
         };
         let request2 = RoomCreateRequest {
-            host_name: "host-2".to_string(),
+            host_uuid: "550e8400-e29b-41d4-a716-446655440002".to_string(),
         };
 
         let response1 = service.create_room(request1).await.unwrap();
@@ -230,20 +297,28 @@ mod tests {
         // Both should be stored and retrievable
         let stored_room1 = repo.get_room(&response1.id).await.unwrap();
         assert!(stored_room1.is_some());
-        assert_eq!(stored_room1.unwrap().host_name, "host-1");
+        assert_eq!(
+            stored_room1.unwrap().host_uuid,
+            Some("550e8400-e29b-41d4-a716-446655440001".to_string())
+        );
 
         let stored_room2 = repo.get_room(&response2.id).await.unwrap();
         assert!(stored_room2.is_some());
-        assert_eq!(stored_room2.unwrap().host_name, "host-2");
+        assert_eq!(
+            stored_room2.unwrap().host_uuid,
+            Some("550e8400-e29b-41d4-a716-446655440002".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_create_room_with_empty_host_name() {
         let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo);
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        let service = RoomService::new(repo, player_mapping);
 
         let request = RoomCreateRequest {
-            host_name: "".to_string(),
+            host_uuid: "".to_string(),
         };
 
         // Should still work - validation could be added later if needed
@@ -257,18 +332,32 @@ mod tests {
     #[tokio::test]
     async fn test_create_room_preserves_host_name() {
         let repo = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repo);
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        let service = RoomService::new(repo, player_mapping.clone());
 
-        let test_names = vec![
-            "simple-name",
-            "name with spaces",
-            "name-with-special-chars!@#",
-            "very-long-name-that-goes-on-and-on-and-on",
+        let test_cases = vec![
+            ("550e8400-e29b-41d4-a716-446655440000", "simple-name"),
+            ("550e8400-e29b-41d4-a716-446655440001", "name with spaces"),
+            (
+                "550e8400-e29b-41d4-a716-446655440002",
+                "name-with-special-chars!@#",
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440003",
+                "very-long-name-that-goes-on-and-on-and-on",
+            ),
         ];
 
-        for name in test_names {
+        for (uuid, name) in test_cases {
+            // Register the player mapping
+            player_mapping
+                .register_player(uuid.to_string(), name.to_string())
+                .await
+                .unwrap();
+
             let request = RoomCreateRequest {
-                host_name: name.to_string(),
+                host_uuid: uuid.to_string(),
             };
 
             let response = service.create_room(request).await.unwrap();
@@ -279,7 +368,9 @@ mod tests {
     #[tokio::test]
     async fn test_list_rooms() {
         let repository = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repository.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        let service = RoomService::new(repository.clone(), player_mapping.clone());
 
         // Create some test rooms
         let room1 = RoomModel::new("test-host-1".to_string());
@@ -299,11 +390,21 @@ mod tests {
     #[tokio::test]
     async fn test_join_room_success() {
         let repository = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repository.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        // Add mapping for test UUID
+        player_mapping
+            .register_player(
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                "test-host".to_string(),
+            )
+            .await
+            .unwrap();
+        let service = RoomService::new(repository.clone(), player_mapping.clone());
 
         // Create a room first
         let create_request = RoomCreateRequest {
-            host_name: "test-host".to_string(),
+            host_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
 
@@ -321,7 +422,9 @@ mod tests {
     #[tokio::test]
     async fn test_join_nonexistent_room() {
         let repository = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repository);
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        let service = RoomService::new(repository, player_mapping);
 
         let result = service
             .join_room("nonexistent-room".to_string(), "test-player".to_string())
@@ -334,11 +437,13 @@ mod tests {
     #[tokio::test]
     async fn test_room_capacity_limit() {
         let repository = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repository.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        let service = RoomService::new(repository.clone(), player_mapping.clone());
 
         // Create a room
         let create_request = RoomCreateRequest {
-            host_name: "test-host".to_string(),
+            host_uuid: "test-host-uuid".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
 
@@ -380,11 +485,21 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_room_joins_with_capacity() {
         let repository = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repository.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        // Add mapping for test UUID
+        player_mapping
+            .register_player(
+                "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                "host-player".to_string(),
+            )
+            .await
+            .unwrap();
+        let service = RoomService::new(repository.clone(), player_mapping.clone());
 
         // Create a room
         let create_request = RoomCreateRequest {
-            host_name: "host-player".to_string(),
+            host_uuid: "550e8400-e29b-41d4-a716-446655440003".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
         assert_eq!(created_room.player_count, 0); // Host doesn't auto-join
@@ -417,18 +532,31 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(final_room.get_player_count(), 3);
-        assert_eq!(final_room.host_name, "host-player");
+        assert_eq!(
+            final_room.host_uuid,
+            Some("550e8400-e29b-41d4-a716-446655440003".to_string())
+        ); // Should store UUID
         assert_eq!(final_room.status, "ONLINE");
     }
 
     #[tokio::test]
     async fn test_concurrent_room_joins() {
         let repository = Arc::new(InMemoryRoomRepository::new());
-        let service = RoomService::new(repository.clone());
+        let player_mapping =
+            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
+        // Add mapping for test UUID
+        player_mapping
+            .register_player(
+                "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                "host-player".to_string(),
+            )
+            .await
+            .unwrap();
+        let service = RoomService::new(repository.clone(), player_mapping.clone());
 
         // Create a room
         let create_request = RoomCreateRequest {
-            host_name: "host-player".to_string(),
+            host_uuid: "550e8400-e29b-41d4-a716-446655440003".to_string(),
         };
         let created_room = service.create_room(create_request).await.unwrap();
 

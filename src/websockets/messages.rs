@@ -26,7 +26,7 @@ pub enum MessageType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketMessageMeta {
     pub timestamp: DateTime<Utc>,
-    pub player_id: Option<String>,
+    pub player_uuid: Option<String>,
 }
 
 /// Base structure for WebSocket messages
@@ -41,7 +41,7 @@ pub struct WebSocketMessage {
 /// Client-to-Server message payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatPayload {
-    pub sender: String,
+    pub sender_uuid: String,
     pub content: String,
 }
 
@@ -58,7 +58,10 @@ pub struct LeavePayload {
 /// Server-to-Client message payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayersListPayload {
+    /// Player UUIDs currently in the room
     pub players: Vec<String>,
+    /// Mapping from UUID to display name for UI resolution
+    pub mapping: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,14 +110,17 @@ impl WebSocketMessage {
             payload,
             meta: Some(WebSocketMessageMeta {
                 timestamp: Utc::now(),
-                player_id: None,
+                player_uuid: None,
             }),
         }
     }
 
     /// Create a PLAYERS_LIST message
-    pub fn players_list(players: Vec<String>) -> Self {
-        let payload = PlayersListPayload { players };
+    pub fn players_list(
+        players: Vec<String>,
+        mapping: std::collections::HashMap<String, String>,
+    ) -> Self {
+        let payload = PlayersListPayload { players, mapping };
         Self::new(
             MessageType::PlayersList,
             serde_json::to_value(payload).unwrap(),
@@ -163,8 +169,11 @@ impl WebSocketMessage {
     }
 
     /// Create a CHAT message
-    pub fn chat(sender: String, content: String) -> Self {
-        let payload = ChatPayload { sender, content };
+    pub fn chat(sender_uuid: String, content: String) -> Self {
+        let payload = ChatPayload {
+            sender_uuid,
+            content,
+        };
         Self::new(MessageType::Chat, serde_json::to_value(payload).unwrap())
     }
 

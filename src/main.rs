@@ -70,10 +70,10 @@ async fn main() {
         player_mapping.clone(),
     ));
     let room_repository = Arc::new(InMemoryRoomRepository::new());
-    let room_service = Arc::new(RoomService::new(room_repository));
+    let room_service = Arc::new(RoomService::new(room_repository, player_mapping.clone()));
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
-    let game_service = Arc::new(GameService::new());
+    let game_service = Arc::new(GameService::new(player_mapping.clone()));
 
     let app_state = AppState::new(
         session_repository,
@@ -108,7 +108,13 @@ async fn main() {
                 session::jwt_auth,
             )),
         )
-        .route("/room", post(room::create_room))
+        .route(
+            "/room",
+            post(room::create_room).layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                session::jwt_auth,
+            )),
+        )
         .route("/rooms", get(room::list_rooms))
         .route(
             "/room/:room_id/join",

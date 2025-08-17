@@ -6,6 +6,7 @@ use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler, RoomSubscription},
     game::{Card, Game, GameEventRoomSubscriber, GameService},
     room::{repository::LeaveRoomResult, service::RoomService},
+    user::PlayerMappingService,
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
@@ -19,6 +20,7 @@ pub struct WebSocketRoomSubscriber {
     room_service: Arc<RoomService>,
     connection_manager: Arc<dyn ConnectionManager>,
     game_service: Arc<GameService>,
+    player_mapping: Arc<dyn PlayerMappingService>,
     event_bus: EventBus,
 }
 
@@ -85,12 +87,14 @@ impl WebSocketRoomSubscriber {
         room_service: Arc<RoomService>,
         connection_manager: Arc<dyn ConnectionManager>,
         game_service: Arc<GameService>,
+        player_mapping: Arc<dyn PlayerMappingService>,
         event_bus: crate::event::EventBus,
     ) -> Self {
         Self {
             room_service,
             connection_manager,
             game_service,
+            player_mapping,
             event_bus,
         }
     }
@@ -106,36 +110,39 @@ impl WebSocketRoomSubscriber {
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?
             .ok_or_else(|| RoomEventError::RoomNotFound(room_id.to_string()))?;
 
-        // Create WebSocket message for players list
-        let ws_message = WebSocketMessage::players_list(room.players.clone());
+        // Create WebSocket message for players list (uuid-based with mapping)
+        let mut mapping: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for uuid in room.get_player_uuids() {
+            if let Some(name) = self.player_mapping.get_playername(&uuid).await {
+                mapping.insert(uuid.clone(), name);
+            }
+        }
+        let ws_message = WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
         let message_json = serde_json::to_string(&ws_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize PLAYERS_LIST message: {}", e))
         })?;
 
         // Send to all players in the room
-        for player_name in &room.players {
+        for uuid in room.get_player_uuids() {
             self.connection_manager
-                .send_to_player(player_name, &message_json)
+                .send_to_player(uuid, &message_json)
                 .await;
         }
 
         debug!(
             room_id = %room_id,
-            players_notified = room.players.len(),
+            players_notified = room.get_player_uuids().len(),
             "Player joined notification sent to all room players"
         );
 
         Ok(())
     }
 
-    async fn handle_player_left(
-        &self,
-        room_id: &str,
-        player_name: &str,
-    ) -> Result<(), RoomEventError> {
+    async fn handle_player_left(&self, room_id: &str, uuid: &str) -> Result<(), RoomEventError> {
         debug!(
             room_id = %room_id,
-            player = %player_name,
+            uuid = %uuid,
             "Handling player left event"
         );
 
@@ -155,38 +162,43 @@ impl WebSocketRoomSubscriber {
             }
         };
 
-        // Send LEAVE message to notify about the specific player who left
-        let leave_message = WebSocketMessage::leave(player_name.to_string());
+        let player_name = self.player_mapping.get_playername(uuid).await.unwrap();
+
+        // Send LEAVE message to notify about the specific player who left (use name for now)
+        let leave_message = WebSocketMessage::leave(player_name);
         let leave_json = serde_json::to_string(&leave_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize LEAVE message: {}", e))
         })?;
 
         // Send LEAVE notification to all remaining players in the room
-        for player in &room.players {
+        for uuid in room.get_player_uuids() {
             self.connection_manager
-                .send_to_player(player, &leave_json)
+                .send_to_player(uuid, &leave_json)
                 .await;
         }
 
+        // Build updated mapping and uuid list
+        let mut mapping: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for uuid in room.get_player_uuids() {
+            if let Some(name) = self.player_mapping.get_playername(&uuid).await {
+                mapping.insert(uuid.clone(), name);
+            }
+        }
+
         // Create WebSocket message for updated players list
-        let players_list_message = WebSocketMessage::players_list(room.players.clone());
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
         let players_list_json = serde_json::to_string(&players_list_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize PLAYERS_LIST message: {}", e))
         })?;
 
         // Send updated players list to all remaining players in the room
-        for player in &room.players {
+        for uuid in room.get_player_uuids() {
             self.connection_manager
-                .send_to_player(player, &players_list_json)
+                .send_to_player(uuid, &players_list_json)
                 .await;
         }
-
-        debug!(
-            room_id = %room_id,
-            player_left = %player_name,
-            players_notified = room.players.len(),
-            "Player left notifications sent to all remaining room players"
-        );
 
         Ok(())
     }
@@ -194,13 +206,13 @@ impl WebSocketRoomSubscriber {
     async fn handle_host_changed(
         &self,
         room_id: &str,
-        old_host: &str,
-        new_host: &str,
+        old_host_uuid: &str,
+        new_host_uuid: &str,
     ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
-            old_host = %old_host,
-            new_host = %new_host,
+            old_host_uuid = %old_host_uuid,
+            new_host_uuid = %new_host_uuid,
             "Handling host changed event"
         );
 
@@ -219,24 +231,30 @@ impl WebSocketRoomSubscriber {
             }
         };
 
+        let new_host_name = self
+            .player_mapping
+            .get_playername(new_host_uuid)
+            .await
+            .unwrap();
+
         // Create WebSocket message for host change
-        let host_change_message = WebSocketMessage::host_change(new_host.to_string());
+        let host_change_message = WebSocketMessage::host_change(new_host_name);
         let message_json = serde_json::to_string(&host_change_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize HOST_CHANGE message: {}", e))
         })?;
 
         // Send to all players in the room
-        for player_name in &room.players {
+        for uuid in room.get_player_uuids() {
             self.connection_manager
-                .send_to_player(player_name, &message_json)
+                .send_to_player(uuid, &message_json)
                 .await;
         }
 
         info!(
             room_id = %room_id,
-            old_host = %old_host,
-            new_host = %new_host,
-            players_notified = room.players.len(),
+            old_host_uuid = %old_host_uuid,
+            new_host_uuid = %new_host_uuid,
+            players_notified = room.get_player_uuids().len(),
             "Host change notification sent to all room players"
         );
 
@@ -246,12 +264,12 @@ impl WebSocketRoomSubscriber {
     async fn handle_chat_message(
         &self,
         room_id: &str,
-        sender: &str,
+        sender_uuid: &str,
         content: &str,
     ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
-            sender = %sender,
+            sender_uuid = %sender_uuid,
             "Handling chat message event"
         );
 
@@ -271,24 +289,17 @@ impl WebSocketRoomSubscriber {
         };
 
         // Create chat message to broadcast
-        let chat_message = WebSocketMessage::chat(sender.to_string(), content.to_string());
+        let chat_message = WebSocketMessage::chat(sender_uuid.to_string(), content.to_string());
         let message_json = serde_json::to_string(&chat_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize CHAT message: {}", e))
         })?;
 
         // Send to all players in the room
-        for player_name in &room.players {
+        for uuid in room.get_player_uuids() {
             self.connection_manager
-                .send_to_player(player_name, &message_json)
+                .send_to_player(uuid, &message_json)
                 .await;
         }
-
-        info!(
-            room_id = %room_id,
-            sender = %sender,
-            players_notified = room.players.len(),
-            "Chat message forwarded to all room players"
-        );
 
         Ok(())
     }
@@ -296,11 +307,11 @@ impl WebSocketRoomSubscriber {
     async fn handle_leave_request(
         &self,
         room_id: &str,
-        player_name: &str,
+        player_uuid: &str,
     ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
-            player = %player_name,
+            player_uuid = %player_uuid,
             "Processing leave request"
         );
 
@@ -313,13 +324,13 @@ impl WebSocketRoomSubscriber {
 
         let was_host = room_before
             .as_ref()
-            .map(|room| room.host_name == player_name)
+            .map(|room| room.host_uuid == Some(player_uuid.to_string()))
             .unwrap_or(false);
 
         // Perform the leave operation using room service
         match self
             .room_service
-            .leave_room(room_id.to_string(), player_name.to_string())
+            .leave_room(room_id.to_string(), player_uuid.to_string())
             .await
         {
             Ok(LeaveRoomResult::Success(updated_room)) => {
@@ -328,19 +339,19 @@ impl WebSocketRoomSubscriber {
                     .emit_to_room(
                         room_id,
                         RoomEvent::PlayerLeft {
-                            player: player_name.to_string(),
+                            player: player_uuid.to_string(),
                         },
                     )
                     .await;
 
                 // If host changed, emit HostChanged event
-                if was_host && updated_room.host_name != player_name {
+                if was_host && updated_room.host_uuid != Some(player_uuid.to_string()) {
                     self.event_bus
                         .emit_to_room(
                             room_id,
                             RoomEvent::HostChanged {
-                                old_host: player_name.to_string(),
-                                new_host: updated_room.host_name.clone(),
+                                old_host: player_uuid.to_string(),
+                                new_host: updated_room.host_uuid.clone().unwrap(),
                             },
                         )
                         .await;
@@ -348,21 +359,21 @@ impl WebSocketRoomSubscriber {
 
                 info!(
                     room_id = %room_id,
-                    player = %player_name,
+                    player_uuid = %player_uuid,
                     "Leave request processed successfully"
                 );
             }
             Ok(LeaveRoomResult::RoomDeleted) => {
                 info!(
                     room_id = %room_id,
-                    player = %player_name,
+                    player_uuid = %player_uuid,
                     "Room deleted after player left"
                 );
             }
             Ok(_) => {
                 info!(
                     room_id = %room_id,
-                    player = %player_name,
+                    player_uuid = %player_uuid,
                     "Player was not in room or room not found"
                 );
             }
@@ -388,7 +399,7 @@ impl WebSocketRoomSubscriber {
                 player.cards.iter().map(|card| card.to_string()).collect(),
                 game.players()
                     .iter()
-                    .map(|player| player.name.clone())
+                    .map(|player| player.uuid.clone())
                     .collect(),
             );
 
@@ -399,8 +410,9 @@ impl WebSocketRoomSubscriber {
                 ))
             })?;
 
+            // Send to the player's UUID, which is how connections are keyed
             self.connection_manager
-                .send_to_player(&player.name, &message_json)
+                .send_to_player(&player.uuid, &message_json)
                 .await;
         }
 
@@ -422,13 +434,18 @@ impl WebSocketRoomSubscriber {
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?
             .ok_or(RoomEventError::RoomNotFound(room_id.to_string()))?;
 
-        if room.host_name != host {
-            info!(room_id = %room_id, "Host is not the current host, cannot start game");
+        if room.host_uuid != Some(host.to_string()) {
+            info!(
+                room_id = %room_id,
+                host = %host,
+                "Host is not the current host, cannot start game. Room host: {:?}",
+                room.host_uuid
+            );
             return Ok(());
         }
 
         // Check if the room has 4 players
-        if room.players.len() != 4 {
+        if room.get_player_uuids().len() != 4 {
             info!(room_id = %room_id, "Room does not have 4 players, cannot start game");
             return Ok(());
         }
@@ -451,7 +468,7 @@ impl WebSocketRoomSubscriber {
             .emit_to_room(
                 room_id,
                 RoomEvent::CreateGame {
-                    players: room.players.clone(),
+                    players: room.get_player_uuids().clone(),
                 },
             )
             .await;
@@ -462,20 +479,20 @@ impl WebSocketRoomSubscriber {
     async fn handle_move_played(
         &self,
         room_id: &str,
-        player: &str,
+        player_uuid: &str,
         cards: &[Card],
         game: Game,
     ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
-            player = %player,
+            player_uuid = %player_uuid,
             cards = ?cards,
             "Handling move played event"
         );
 
         for game_player in game.players() {
             let player_message = WebSocketMessage::move_played(
-                player.to_string(),
+                player_uuid.to_string(),
                 cards.iter().map(|card| card.to_string()).collect(),
             );
 
@@ -487,7 +504,7 @@ impl WebSocketRoomSubscriber {
             })?;
 
             self.connection_manager
-                .send_to_player(&game_player.name, &message_json)
+                .send_to_player(&game_player.uuid, &message_json)
                 .await;
         }
 
@@ -520,7 +537,7 @@ impl WebSocketRoomSubscriber {
         // Send to all players in the game
         for game_player in game.players() {
             self.connection_manager
-                .send_to_player(&game_player.name, &message_json)
+                .send_to_player(&game_player.uuid, &message_json)
                 .await;
         }
 
@@ -560,7 +577,7 @@ impl WebSocketRoomSubscriber {
         // Send to all players in the game
         for game_player in game.players() {
             self.connection_manager
-                .send_to_player(&game_player.name, &message_json)
+                .send_to_player(&game_player.uuid, &message_json)
                 .await;
         }
 
@@ -602,15 +619,15 @@ impl WebSocketRoomSubscriber {
         })?;
 
         // Send to all players in the room
-        for player_name in &room.players {
+        for uuid in room.get_player_uuids() {
             self.connection_manager
-                .send_to_player(player_name, &message_json)
+                .send_to_player(uuid, &message_json)
                 .await;
         }
 
         info!(
             room_id = %room_id,
-            players_notified = room.players.len(),
+            players_notified = room.get_player_uuids().len(),
             "Game reset notification sent to all players"
         );
 

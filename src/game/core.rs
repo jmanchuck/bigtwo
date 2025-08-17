@@ -1,13 +1,14 @@
 // Game history is a list of moves and a list of players (we can derive which player acted based on the history of moves), also has game ID
 
 // The game structure will be passed around to different handlers that can update the state of the game
-use crate::game::cards::{compare_played_cards, Card, Hand, HandError, Rank, Suit};
+use crate::game::cards::{Card, Hand, HandError, Rank, Suit};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
-    pub name: String,
+    pub name: String, // For external compatibility
+    pub uuid: String, // For internal identification
     pub cards: Vec<Card>,
 }
 
@@ -56,9 +57,10 @@ impl Game {
         }
     }
 
-    pub fn new_game(id: String, player_names: &[String]) -> Result<Self, GameError> {
+    /// Standard constructor: creates a new game with UUIDs and names
+    pub fn new_game(id: String, player_data: &[(String, String)]) -> Result<Self, GameError> {
         // Big Two requires exactly 4 players
-        if player_names.len() != 4 {
+        if player_data.len() != 4 {
             return Err(GameError::InvalidPlayedCards);
         }
 
@@ -66,49 +68,36 @@ impl Game {
         let mut cards = Card::all_cards();
         cards.shuffle(&mut rand::rng());
 
-        let mut players: Vec<Player> = player_names
+        // Create player data with cards
+        let player_cards: Vec<(String, String, Vec<Card>)> = player_data
             .iter()
-            .map(|name| {
+            .map(|(name, uuid)| {
                 let mut player_cards: Vec<Card> = cards.drain(0..13).collect();
                 player_cards.sort();
-                Player {
-                    name: name.to_string(),
-                    cards: player_cards,
-                }
+                (name.clone(), uuid.clone(), player_cards) // (name, uuid, cards)
             })
             .collect();
 
-        // Capture starting hands before rotating players
-        let starting_hands: std::collections::HashMap<String, Vec<Card>> = players
-            .iter()
-            .map(|player| (player.name.clone(), player.cards.clone()))
-            .collect();
-
-        // The first player is the one with the 3 of diamonds
-        let first_player = players
-            .iter()
-            .position(|p| p.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)))
-            .ok_or(GameError::InvalidPlayedCards)?;
-
-        players.rotate_left(first_player);
-
-        Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
+        // Delegate to the more general constructor
+        Self::new_game_with_cards(id, player_cards)
     }
 
-    pub fn new_with_cards(
+    /// Testing/specialized constructor: creates a game with predetermined cards (no player count restriction)
+    pub fn new_game_with_cards(
         id: String,
-        player_cards: Vec<(String, Vec<Card>)>,
+        player_data: Vec<(String, String, Vec<Card>)>, // (name, uuid, cards)
     ) -> Result<Self, GameError> {
         // Create players with predetermined cards
         let mut players = Vec::new();
         let mut starting_hands = std::collections::HashMap::new();
 
-        for (name, cards) in &player_cards {
+        for (name, uuid, cards) in player_data.iter() {
             players.push(Player {
                 name: name.clone(),
+                uuid: uuid.clone(),
                 cards: cards.clone(),
             });
-            starting_hands.insert(name.clone(), cards.clone());
+            starting_hands.insert(uuid.clone(), cards.clone()); // Key by UUID for internal use
         }
 
         // Find who has 3D (they go first)
@@ -123,8 +112,9 @@ impl Game {
         Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
     }
 
-    pub fn play_cards(&mut self, player_name: &str, cards: &[Card]) -> Result<bool, GameError> {
-        self.validate_player_turn(player_name)?;
+    /// Play cards by player UUID
+    pub fn play_cards(&mut self, player_uuid: &str, cards: &[Card]) -> Result<bool, GameError> {
+        self.validate_player_turn(player_uuid)?;
 
         if cards.is_empty() {
             self.handle_pass()
@@ -133,9 +123,9 @@ impl Game {
         }
     }
 
-    fn validate_player_turn(&self, player_name: &str) -> Result<(), GameError> {
+    fn validate_player_turn(&self, player_uuid: &str) -> Result<(), GameError> {
         let player = &self.players[self.current_turn];
-        if player.name != player_name {
+        if player.uuid != player_uuid {
             return Err(GameError::InvalidPlayerTurn);
         }
         Ok(())
@@ -165,7 +155,7 @@ impl Game {
         Ok(player_won)
     }
 
-    fn validate_card_play(&self, new_hand: &Hand, cards: &[Card]) -> Result<(), GameError> {
+    fn validate_card_play(&self, new_hand: &Hand, _cards: &[Card]) -> Result<(), GameError> {
         // Skip validation if 3 consecutive passes have occurred (table is clear)
         if self.consecutive_passes < 3 && !self.played_hands.is_empty() {
             if let Some(last_non_pass_hand) =
@@ -223,8 +213,14 @@ impl Game {
         &self.players
     }
 
+    /// Get current player uuid
     pub fn current_player_turn(&self) -> String {
-        self.players[self.current_turn].name.clone()
+        self.players[self.current_turn].uuid.clone()
+    }
+
+    /// Get current player (for detailed access)
+    pub fn current_player(&self) -> &Player {
+        &self.players[self.current_turn]
     }
 
     pub fn consecutive_passes(&self) -> usize {
@@ -254,26 +250,17 @@ impl Game {
 
 mod tests {
     use super::*;
-    use crate::game::cards::{Hand, Rank, Suit};
-
-    fn create_player_starting_hands(
-        players: &[Player],
-    ) -> std::collections::HashMap<String, Vec<Card>> {
-        players
-            .iter()
-            .map(|player| (player.name.clone(), player.cards.clone()))
-            .collect()
-    }
+    use crate::game::cards::{Card, Hand, HandError, Rank, Suit};
 
     #[test]
     fn test_new_game() {
         let game = Game::new_game(
             "1".to_string(),
             &[
-                "Alice".to_string(),
-                "Bob".to_string(),
-                "Charlie".to_string(),
-                "David".to_string(),
+                ("Alice".to_string(), "alice-uuid".to_string()),
+                ("Bob".to_string(), "bob-uuid".to_string()),
+                ("Charlie".to_string(), "charlie-uuid".to_string()),
+                ("David".to_string(), "david-uuid".to_string()),
             ],
         )
         .unwrap();
@@ -281,17 +268,17 @@ mod tests {
         assert_eq!(game.consecutive_passes(), 0);
 
         // Check that the current player is the one who has the 3 of diamonds
-        let current_player_name = game.current_player_turn();
+        let current_player_uuid = game.current_player_turn();
         let current_player = game
             .players()
             .iter()
-            .find(|p| p.name == current_player_name)
+            .find(|p| p.uuid == current_player_uuid)
             .unwrap();
         let three_of_diamonds = Card::new(Rank::Three, Suit::Diamonds);
         assert!(
             current_player.cards.contains(&three_of_diamonds),
             "Current player '{}' should have the 3 of diamonds",
-            current_player_name
+            current_player_uuid
         );
 
         // Check the cards are dealt and are all 52 unique cards
@@ -327,6 +314,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -335,6 +323,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -345,11 +334,14 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
-        let result = game.play_cards("Alice", &cards_to_play);
+        let result = game.play_cards("alice-uuid", &cards_to_play);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false); // Game should continue, Alice didn't win
@@ -369,10 +361,12 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![Card::new(Rank::Three, Suit::Diamonds)], // Only one card
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -383,11 +377,14 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
-        let result = game.play_cards("Alice", &cards_to_play);
+        let result = game.play_cards("alice-uuid", &cards_to_play);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true); // Alice should win
@@ -402,6 +399,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Diamonds),
@@ -409,6 +407,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -419,21 +418,24 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice plays first card
-        let result1 = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        let result1 = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result1.is_ok());
         assert_eq!(result1.unwrap(), false); // Game continues
 
         // Now it's Bob's turn, but Alice needs to play to win
         // Skip Bob's turn by having him pass
-        let pass_result = game.play_cards("Bob", &[]);
+        let pass_result = game.play_cards("bob-uuid", &[]);
         assert!(pass_result.is_ok());
 
         // Alice plays her final card and should win
-        let result2 = game.play_cards("Alice", &[Card::new(Rank::Four, Suit::Diamonds)]);
+        let result2 = game.play_cards("alice-uuid", &[Card::new(Rank::Four, Suit::Diamonds)]);
         if result2.is_err() {
             println!("Error on second play: {:?}", result2.as_ref().unwrap_err());
         }
@@ -450,6 +452,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -457,6 +460,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -467,11 +471,14 @@ mod tests {
             0, // Alice's turn
             0,
             vec![Hand::from_cards(&[Card::new(Rank::Five, Suit::Spades)]).unwrap()], // Someone played before
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice passes (empty cards vector)
-        let result = game.play_cards("Alice", &[]);
+        let result = game.play_cards("alice-uuid", &[]);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false); // Game continues
@@ -490,6 +497,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -497,6 +505,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -507,12 +516,15 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play a card Alice doesn't have
         let cards_to_play = vec![Card::new(Rank::Ace, Suit::Spades)];
-        let result = game.play_cards("Alice", &cards_to_play);
+        let result = game.play_cards("alice-uuid", &cards_to_play);
 
         // Should now return an error for card not owned
         assert!(result.is_err());
@@ -532,10 +544,12 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![Card::new(Rank::Three, Suit::Diamonds)],
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -546,11 +560,14 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play with Bob when it's Alice's turn
-        let result = game.play_cards("Bob", &[Card::new(Rank::Six, Suit::Clubs)]);
+        let result = game.play_cards("bob-uuid", &[Card::new(Rank::Six, Suit::Clubs)]);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), GameError::InvalidPlayerTurn));
     }
@@ -560,18 +577,22 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![Card::new(Rank::Three, Suit::Diamonds)],
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
             Player {
                 name: "Charlie".to_string(),
+                uuid: "charlie-uuid".to_string(),
                 cards: vec![Card::new(Rank::Seven, Suit::Hearts)],
             },
             Player {
                 name: "David".to_string(),
+                uuid: "david-uuid".to_string(),
                 cards: vec![Card::new(Rank::Eight, Suit::Spades)],
             },
         ];
@@ -582,11 +603,14 @@ mod tests {
             0, // Alice's turn
             3, // 3 consecutive passes already
             vec![Hand::Pass, Hand::Pass, Hand::Pass],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to pass when 3 consecutive passes already occurred
-        let result = game.play_cards("Alice", &[]);
+        let result = game.play_cards("alice-uuid", &[]);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), GameError::CannotPass));
     }
@@ -596,6 +620,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -603,6 +628,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::King, Suit::Spades)],
             },
         ];
@@ -615,11 +641,14 @@ mod tests {
             vec![Hand::Single(crate::game::cards::SingleHand::new(
                 Card::new(Rank::King, Suit::Hearts),
             ))], // Previous player played King of Hearts
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play a weaker card (3D) when King was played
-        let result = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        let result = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), GameError::InvalidPlayedCards));
     }
@@ -629,6 +658,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -636,6 +666,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -646,11 +677,14 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play a card Alice doesn't have (Ace of Spades)
-        let result = game.play_cards("Alice", &[Card::new(Rank::Ace, Suit::Spades)]);
+        let result = game.play_cards("alice-uuid", &[Card::new(Rank::Ace, Suit::Spades)]);
 
         // Should now return an error for card not owned
         assert!(result.is_err());
@@ -670,6 +704,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -677,6 +712,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -687,12 +723,15 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play an invalid pair (different ranks)
         let result = game.play_cards(
-            "Alice",
+            "alice-uuid",
             &[
                 Card::new(Rank::Three, Suit::Diamonds),
                 Card::new(Rank::Four, Suit::Hearts),
@@ -708,18 +747,22 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![Card::new(Rank::Three, Suit::Diamonds)],
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Four, Suit::Hearts)],
             },
             Player {
                 name: "Charlie".to_string(),
+                uuid: "charlie-uuid".to_string(),
                 cards: vec![Card::new(Rank::Five, Suit::Spades)],
             },
             Player {
                 name: "David".to_string(),
+                uuid: "david-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -737,16 +780,19 @@ mod tests {
                 Hand::Pass,
                 Hand::Pass,
             ],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice passes (making it 3 consecutive passes)
-        let result1 = game.play_cards("Alice", &[]);
+        let result1 = game.play_cards("alice-uuid", &[]);
         assert!(result1.is_ok());
         assert_eq!(game.consecutive_passes, 3);
 
         // Now Bob should be able to play any card (table is clear)
-        let result2 = game.play_cards("Bob", &[Card::new(Rank::Four, Suit::Hearts)]);
+        let result2 = game.play_cards("bob-uuid", &[Card::new(Rank::Four, Suit::Hearts)]);
         assert!(result2.is_ok());
         assert_eq!(game.consecutive_passes, 0); // Reset after card play
     }
@@ -756,10 +802,10 @@ mod tests {
         let game = Game::new_game(
             "1".to_string(),
             &[
-                "Alice".to_string(),
-                "Bob".to_string(),
-                "Charlie".to_string(),
-                "David".to_string(),
+                ("Alice".to_string(), "alice-uuid".to_string()),
+                ("Bob".to_string(), "bob-uuid".to_string()),
+                ("Charlie".to_string(), "charlie-uuid".to_string()),
+                ("David".to_string(), "david-uuid".to_string()),
             ],
         )
         .unwrap();
@@ -767,24 +813,24 @@ mod tests {
         // Verify starting hands were captured for all players
         let starting_hands = game.starting_hands();
         assert_eq!(starting_hands.len(), 4);
-        assert!(starting_hands.contains_key("Alice"));
-        assert!(starting_hands.contains_key("Bob"));
-        assert!(starting_hands.contains_key("Charlie"));
-        assert!(starting_hands.contains_key("David"));
+        assert!(starting_hands.contains_key("alice-uuid"));
+        assert!(starting_hands.contains_key("bob-uuid"));
+        assert!(starting_hands.contains_key("charlie-uuid"));
+        assert!(starting_hands.contains_key("david-uuid"));
 
         // Each player should have 13 starting cards
-        for (player_name, cards) in starting_hands {
+        for (player_uuid, cards) in starting_hands {
             assert_eq!(
                 cards.len(),
                 13,
                 "Player {} should have 13 starting cards",
-                player_name
+                player_uuid
             );
         }
 
         // Starting hands should match the sorted cards each player received
         for player in game.players() {
-            let starting_cards = starting_hands.get(&player.name).unwrap();
+            let starting_cards = starting_hands.get(&player.uuid).unwrap();
             // The current cards might be different due to the rotation, but starting hands preserve original distribution
             assert_eq!(starting_cards.len(), 13);
         }
@@ -795,6 +841,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -802,6 +849,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -812,11 +860,14 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play without 3 of diamonds - should fail
-        let result = game.play_cards("Alice", &[Card::new(Rank::Four, Suit::Hearts)]);
+        let result = game.play_cards("alice-uuid", &[Card::new(Rank::Four, Suit::Hearts)]);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -829,6 +880,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -836,6 +888,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -846,13 +899,16 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Play with 3 of diamonds - should succeed
-        let result = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        let result = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result.is_ok());
-        assert_eq!(game.current_player_turn(), "Bob"); // Turn should advance
+        assert_eq!(game.current_player_turn(), "bob-uuid"); // Turn should advance
         assert_eq!(game.played_hands().len(), 1); // Hand should be recorded
     }
 
@@ -861,6 +917,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Three, Suit::Hearts),
@@ -869,6 +926,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Six, Suit::Clubs)],
             },
         ];
@@ -879,19 +937,22 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Play a pair that includes 3 of diamonds - should succeed
         let result = game.play_cards(
-            "Alice",
+            "alice-uuid",
             &[
                 Card::new(Rank::Three, Suit::Diamonds),
                 Card::new(Rank::Three, Suit::Hearts),
             ],
         );
         assert!(result.is_ok());
-        assert_eq!(game.current_player_turn(), "Bob"); // Turn should advance
+        assert_eq!(game.current_player_turn(), "bob-uuid"); // Turn should advance
         assert_eq!(game.played_hands().len(), 1); // Hand should be recorded
     }
 
@@ -900,6 +961,7 @@ mod tests {
         let players = vec![
             Player {
                 name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
                 cards: vec![
                     Card::new(Rank::Three, Suit::Diamonds),
                     Card::new(Rank::Four, Suit::Hearts),
@@ -907,6 +969,7 @@ mod tests {
             },
             Player {
                 name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
                 cards: vec![Card::new(Rank::Four, Suit::Clubs)],
             },
         ];
@@ -917,18 +980,21 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice plays 3 of diamonds successfully
-        let result1 = game.play_cards("Alice", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        let result1 = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result1.is_ok());
-        assert_eq!(game.current_player_turn(), "Bob"); // Should be Bob's turn
+        assert_eq!(game.current_player_turn(), "bob-uuid"); // Should be Bob's turn
 
         // Bob should be able to play any valid card that beats 3♦ or just pass
-        let result2 = game.play_cards("Bob", &[Card::new(Rank::Four, Suit::Clubs)]);
+        let result2 = game.play_cards("bob-uuid", &[Card::new(Rank::Four, Suit::Clubs)]);
         assert!(result2.is_ok());
         // In a 2-player game, after both players play once, it cycles back to Alice (0 -> 1 -> 0)
-        assert_eq!(game.current_player_turn(), "Alice");
+        assert_eq!(game.current_player_turn(), "alice-uuid");
     }
 }

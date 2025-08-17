@@ -23,13 +23,13 @@ macro_rules! cards {
 // ============================================================================
 
 pub struct GameBuilder {
-    player_cards: Vec<(String, Vec<Card>)>,
+    player_data: Vec<(String, String, Vec<Card>)>, // (name, uuid, cards)
 }
 
 impl GameBuilder {
     pub fn new() -> Self {
         Self {
-            player_cards: vec![],
+            player_data: vec![],
         }
     }
 
@@ -111,21 +111,37 @@ impl GameBuilder {
 
     /// Create a custom game with specific card distributions
     pub fn with_cards(mut self, cards: Vec<(&str, Vec<Card>)>) -> Self {
-        self.player_cards = cards
+        self.player_data = cards
             .into_iter()
-            .map(|(name, cards)| (name.to_string(), cards))
+            .map(|(name, cards)| {
+                // Map provided player name to the UUIDs used in TestSetupBuilder
+                let uuid = match name {
+                    "alice" => "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                    "bob" => "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                    "charlie" => "550e8400-e29b-41d4-a716-446655440002".to_string(),
+                    "david" => "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                    _ => format!("{}-uuid", name),
+                };
+                (name.to_string(), uuid, cards)
+            })
             .collect();
         self
     }
 
     /// Build the game and return the first player's name
     pub async fn build_with_setup(self, setup: &TestSetup) -> String {
-        let first_player_name = if self.player_cards.is_empty() {
+        let first_player_name = if self.player_data.is_empty() {
             // No custom cards specified - use standard random dealing
             let player_names = setup.players.clone();
             setup
                 .game_service
-                .create_game("room-123", &player_names)
+                .create_game(
+                    "room-123",
+                    &player_names
+                        .iter()
+                        .map(|p| p.0.clone())
+                        .collect::<Vec<String>>(),
+                )
                 .await
                 .unwrap();
 
@@ -156,7 +172,7 @@ impl GameBuilder {
         // Use the new public API to create game with predetermined cards
         let game = setup
             .game_service
-            .create_game_with_cards("room-123", self.player_cards.clone())
+            .create_game_with_cards("room-123", self.player_data.clone())
             .await
             .unwrap();
 

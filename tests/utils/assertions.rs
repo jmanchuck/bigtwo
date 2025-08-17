@@ -10,13 +10,13 @@ use super::setup::TestSetup;
 
 pub struct MessageAssertion<'a> {
     setup: &'a TestSetup,
-    players: Vec<&'a str>,
+    players: Vec<&'a str>, // uuid
 }
 
 impl<'a> MessageAssertion<'a> {
     /// Create an assertion for all players in the setup
     pub fn for_all_players(setup: &'a TestSetup) -> Self {
-        let players = setup.players.iter().map(|s| s.as_str()).collect();
+        let players = setup.players.iter().map(|s| s.0.as_str()).collect();
         Self { setup, players }
     }
 
@@ -176,9 +176,9 @@ impl MessageContent {
         let cards: Vec<String> = serde_json::from_value(self.payload["cards"].clone()).unwrap();
         assert_eq!(cards.len(), 13);
 
-        // Verify current turn is valid
+        // Verify current turn (uuid) is one of the players in the list
         let current_turn = self.payload["current_turn"].as_str().unwrap();
-        assert!(["alice", "bob", "charlie", "david"].contains(&current_turn));
+        assert!(player_list.contains(&current_turn.to_string()));
 
         self
     }

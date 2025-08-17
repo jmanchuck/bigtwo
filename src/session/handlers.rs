@@ -1,9 +1,8 @@
 use axum::{extract::State, response::Json, Extension};
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tracing::{info, instrument};
 
-use super::{service::SessionService, types::SessionClaims};
+use super::types::SessionClaims;
 use crate::shared::{AppError, AppState};
 
 /// Creates a new user session
@@ -21,7 +20,8 @@ pub async fn create_session(State(state): State<AppState>) -> Result<Json<Value>
 
     Ok(Json(json!({
         "session_id": session_response.session_id,
-        "username": session_response.username
+        "username": session_response.username,
+        "player_uuid": session_response.player_uuid
     })))
 }
 
@@ -50,6 +50,7 @@ mod tests {
         http::{Request, StatusCode},
         Router,
     };
+    use std::sync::Arc;
     use tower::ServiceExt; // for `oneshot`
 
     #[tokio::test]

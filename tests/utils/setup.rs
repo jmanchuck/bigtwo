@@ -9,6 +9,7 @@ use bigtwo::{
         repository::{InMemoryRoomRepository, RoomRepository},
         service::RoomService,
     },
+    user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService},
     websockets::{WebSocketRoomSubscriber, WebsocketReceiveHandler},
 };
 
@@ -23,12 +24,13 @@ pub struct TestSetup {
     pub mock_conn_manager: Arc<MockConnectionManager>,
     pub input_handler: WebsocketReceiveHandler,
     pub game_service: Arc<GameService>,
-    pub players: Vec<String>,
+    pub players: Vec<(String, String)>,
     pub _subscription_handle: JoinHandle<()>,
 }
 
 pub struct TestSetupBuilder {
-    players: Vec<String>,
+    /// (uuid, playername) pairs
+    players: Vec<(String, String)>,
     room_id: String,
 }
 
@@ -40,41 +42,79 @@ impl TestSetupBuilder {
         }
     }
 
-    pub fn with_players(mut self, players: Vec<&str>) -> Self {
-        self.players = players.into_iter().map(|s| s.to_string()).collect();
+    pub fn with_players(mut self, players: Vec<(String, String)>) -> Self {
+        self.players = players;
         self
     }
 
     pub fn with_two_players(self) -> Self {
-        self.with_players(vec!["alice", "bob"])
+        self.with_players(vec![
+            (
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                "alice".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                "bob".to_string(),
+            ),
+        ])
     }
 
     pub fn with_four_players(self) -> Self {
-        self.with_players(vec!["alice", "bob", "charlie", "david"])
+        self.with_players(vec![
+            (
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                "alice".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                "bob".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440002".to_string(),
+                "charlie".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                "david".to_string(),
+            ),
+        ])
     }
 
     pub async fn build(self) -> TestSetup {
         let event_bus = EventBus::new();
         let repo = Arc::new(InMemoryRoomRepository::new());
         let mock_conn_manager = Arc::new(MockConnectionManager::new());
-        let game_service = Arc::new(GameService::new());
+        let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping.clone()));
 
         // Create room
         let room = RoomModel {
             id: self.room_id.clone(),
-            host_name: self
-                .players
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "host".to_string()),
+            host_uuid: Some(self.players.first().unwrap().0.clone()),
             status: "ONLINE".to_string(),
-            players: self.players.clone(),
+            player_uuids: self.players.iter().map(|p| p.0.clone()).collect(),
         };
         repo.create_room(&room).await.unwrap();
 
         // Connect players
-        for player in &self.players {
-            mock_conn_manager.add_connected_player(player).await;
+        for (uuid, _) in &self.players {
+            mock_conn_manager.add_connected_player(uuid).await;
+        }
+
+        // Register name -> uuid mapping in the mock connection manager so that
+        // messages addressed by name get recorded under the UUID key
+        for (uuid, name) in &self.players {
+            mock_conn_manager.register_player_mapping(name, uuid).await;
+        }
+
+        // Register UUID -> playername mapping in the actual player mapping service
+        // so GameService can resolve names during game creation
+        for (uuid, name) in &self.players {
+            player_mapping
+                .register_player(uuid.clone(), name.clone())
+                .await
+                .expect("failed to register player mapping");
         }
 
         let input_handler = WebsocketReceiveHandler::new(event_bus.clone());
@@ -90,11 +130,12 @@ impl TestSetupBuilder {
         let _game_subscription_handle = game_subscription.start().await;
 
         // Create websocket subscriber to handle message broadcasting
-        let room_service = Arc::new(RoomService::new(repo.clone()));
+        let room_service = Arc::new(RoomService::new(repo.clone(), player_mapping.clone()));
         let output_subscriber = WebSocketRoomSubscriber::new(
             room_service,
             mock_conn_manager.clone(),
             game_service.clone(),
+            player_mapping.clone(),
             event_bus.clone(),
         );
 
@@ -104,6 +145,9 @@ impl TestSetupBuilder {
             event_bus.clone(),
         );
         let subscription_handle = subscription.start().await;
+
+        // Give subscribers a brief moment to initialize to avoid race conditions
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
 
         TestSetup {
             event_bus,

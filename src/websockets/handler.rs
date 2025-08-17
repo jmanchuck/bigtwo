@@ -182,7 +182,7 @@ pub async fn websocket_handler(
         .session_service
         .validate_session(jwt_token)
         .await?;
-    let username = claims.username;
+    let username = claims.username.clone();
 
     info!(
         room_id = %room_id,
@@ -206,7 +206,7 @@ pub async fn websocket_handler(
         "Room verified, establishing WebSocket connection"
     );
     Ok(ws.on_upgrade(move |socket| {
-        handle_websocket_connection(socket, room_id, username, app_state)
+        handle_websocket_connection(socket, room_id, username, claims.session_id, app_state)
     }))
 }
 
@@ -215,6 +215,7 @@ async fn handle_websocket_connection(
     socket: axum::extract::ws::WebSocket,
     room_id: String,
     username: String,
+    session_id: String,
     app_state: AppState,
 ) {
     info!(
@@ -227,15 +228,50 @@ async fn handle_websocket_connection(
     let (outbound_sender, outbound_receiver) = mpsc::unbounded_channel::<String>();
 
     // Register connection with the connection manager
+    // Resolve stable player UUID from session id for connection identity
+    let player_uuid = match app_state
+        .session_service
+        .get_player_uuid_by_session(&session_id)
+        .await
+    {
+        Ok(opt) => match opt {
+            Some(uuid) => uuid,
+            None => {
+                warn!(session_id = %session_id, "No player UUID for session");
+                return;
+            }
+        },
+        Err(_e) => {
+            warn!(session_id = %session_id, "Failed to get player UUID for session");
+            return;
+        }
+    };
+
     app_state
         .connection_manager
-        .add_connection(username.clone(), outbound_sender.clone())
+        .add_connection(player_uuid.clone(), outbound_sender.clone())
         .await;
 
     // Send initial room state to the newly connected player
     if let Ok(Some(room)) = app_state.room_service.get_room(&room_id).await {
-        let initial_message =
-            crate::websockets::messages::WebSocketMessage::players_list(room.players);
+        let mut mapping: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for uuid in room.get_player_uuids() {
+            if let Some(name) = app_state.player_mapping.get_playername(&uuid).await {
+                mapping.insert(uuid.clone(), name);
+            } else {
+                warn!(
+                    room_id = %room_id,
+                    uuid = %uuid,
+                    "Player not found in mapping"
+                );
+            }
+        }
+
+        let initial_message = crate::websockets::messages::WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+        );
         if let Ok(message_json) = serde_json::to_string(&initial_message) {
             let _ = outbound_sender.send(message_json);
             debug!(
@@ -254,7 +290,7 @@ async fn handle_websocket_connection(
 
     // Create and run the connection
     let connection = Connection::new(
-        username.clone(),
+        player_uuid.clone(),
         room_id.clone(),
         socket_wrapper,
         outbound_receiver,
@@ -283,7 +319,7 @@ async fn handle_websocket_connection(
     // Cleanup: remove from connection manager and emit disconnect event
     app_state
         .connection_manager
-        .remove_connection(&username)
+        .remove_connection(&player_uuid)
         .await;
 
     // Emit disconnect event - let the event system handle the rest
@@ -292,7 +328,7 @@ async fn handle_websocket_connection(
         .emit_to_room(
             &room_id,
             crate::event::RoomEvent::PlayerDisconnected {
-                player: username.clone(),
+                player: player_uuid,
             },
         )
         .await;

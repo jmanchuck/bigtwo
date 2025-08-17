@@ -23,9 +23,13 @@ impl GameRepository {
         }
     }
 
-    pub async fn create_game(&self, room_id: &str, players: &[String]) -> Result<(), GameError> {
+    pub async fn create_game(
+        &self,
+        room_id: &str,
+        player_data: &[(String, String)],
+    ) -> Result<(), GameError> {
         let mut games = self.games.write().await;
-        let game = Game::new_game(room_id.to_string(), players)?;
+        let game = Game::new_game(room_id.to_string(), player_data)?;
         games.insert(room_id.to_string(), game);
         Ok(())
     }
@@ -45,10 +49,5 @@ impl GameRepository {
         let mut games = self.games.write().await;
         games.remove(room_id);
         Ok(())
-    }
-
-    pub async fn has_game(&self, room_id: &str) -> bool {
-        let games = self.games.read().await;
-        games.contains_key(room_id)
     }
 }
