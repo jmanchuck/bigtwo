@@ -17,7 +17,6 @@ use crate::{event::EventBus, game::GameService, user::PlayerMappingService};
 /// Shared application state containing all dependencies
 #[derive(Clone)]
 pub struct AppState {
-    pub session_repository: Arc<dyn SessionRepository + Send + Sync>,
     pub session_service: Arc<SessionService>,
     pub room_service: Arc<RoomService>,
     pub event_bus: EventBus,
@@ -28,7 +27,6 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(
-        session_repository: Arc<dyn SessionRepository + Send + Sync>,
         session_service: Arc<SessionService>,
         room_service: Arc<RoomService>,
         event_bus: EventBus,
@@ -37,7 +35,6 @@ impl AppState {
         player_mapping: Arc<dyn PlayerMappingService>,
     ) -> Self {
         Self {
-            session_repository,
             session_service,
             room_service,
             event_bus,
@@ -156,7 +153,6 @@ impl AppStateBuilder {
             .ok_or(AppStateBuilderError::MissingDependency("game_service"))?;
 
         Ok(AppState {
-            session_repository,
             session_service,
             room_service,
             event_bus,
@@ -202,7 +198,6 @@ impl AppStateBuilder {
             .unwrap_or_else(|| Arc::new(crate::websockets::InMemoryConnectionManager::new()));
 
         AppState {
-            session_repository,
             session_service,
             room_service,
             event_bus: self.event_bus.unwrap_or_else(|| EventBus::new()),
@@ -380,7 +375,6 @@ pub mod test_utils {
                 .unwrap_or_else(|| Arc::new(GameService::new(player_mapping.clone())));
 
             AppState {
-                session_repository,
                 session_service,
                 room_service,
                 event_bus: self.event_bus.unwrap_or_else(|| EventBus::new()),
