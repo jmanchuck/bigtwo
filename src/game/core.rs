@@ -69,13 +69,13 @@ impl Game {
 
         let mut players: Vec<Player> = player_uuids
             .iter()
-            .enumerate()
-            .map(|(i, name)| {
+            .map(|uuid| {
                 let mut player_cards: Vec<Card> = cards.drain(0..13).collect();
                 player_cards.sort();
                 Player {
-                    name: name.to_string(),
-                    uuid: format!("temp-uuid-{}", i), // Temporary UUID for backwards compatibility
+                    // Until UI/display mapping is applied, store uuid in name field as placeholder
+                    name: uuid.to_string(),
+                    uuid: uuid.to_string(),
                     cards: player_cards,
                 }
             })

@@ -81,6 +81,7 @@ impl SessionService {
         Ok(SessionResponse {
             session_id: token,
             username,
+            player_uuid,
         })
     }
 

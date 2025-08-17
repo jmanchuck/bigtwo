@@ -21,7 +21,8 @@ pub async fn create_session(State(state): State<AppState>) -> Result<Json<Value>
 
     Ok(Json(json!({
         "session_id": session_response.session_id,
-        "username": session_response.username
+        "username": session_response.username,
+        "player_uuid": session_response.player_uuid
     })))
 }
 

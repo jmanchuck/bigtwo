@@ -58,7 +58,10 @@ pub struct LeavePayload {
 /// Server-to-Client message payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayersListPayload {
+    /// Player UUIDs currently in the room
     pub players: Vec<String>,
+    /// Mapping from UUID to display name for UI resolution
+    pub mapping: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,8 +116,11 @@ impl WebSocketMessage {
     }
 
     /// Create a PLAYERS_LIST message
-    pub fn players_list(players: Vec<String>) -> Self {
-        let payload = PlayersListPayload { players };
+    pub fn players_list(
+        players: Vec<String>,
+        mapping: std::collections::HashMap<String, String>,
+    ) -> Self {
+        let payload = PlayersListPayload { players, mapping };
         Self::new(
             MessageType::PlayersList,
             serde_json::to_value(payload).unwrap(),

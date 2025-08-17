@@ -110,14 +110,15 @@ impl WebSocketRoomSubscriber {
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to get room: {}", e)))?
             .ok_or_else(|| RoomEventError::RoomNotFound(room_id.to_string()))?;
 
-        // Create WebSocket message for players list
-        let mut players_names = Vec::new();
+        // Create WebSocket message for players list (uuid-based with mapping)
+        let mut mapping: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         for uuid in room.get_player_uuids() {
             if let Some(name) = self.player_mapping.get_playername(&uuid).await {
-                players_names.push(name);
+                mapping.insert(uuid.clone(), name);
             }
         }
-        let ws_message = WebSocketMessage::players_list(players_names);
+        let ws_message = WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
         let message_json = serde_json::to_string(&ws_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize PLAYERS_LIST message: {}", e))
         })?;
@@ -163,7 +164,7 @@ impl WebSocketRoomSubscriber {
 
         let player_name = self.player_mapping.get_playername(uuid).await.unwrap();
 
-        // Send LEAVE message to notify about the specific player who left
+        // Send LEAVE message to notify about the specific player who left (use name for now)
         let leave_message = WebSocketMessage::leave(player_name);
         let leave_json = serde_json::to_string(&leave_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize LEAVE message: {}", e))
@@ -176,15 +177,18 @@ impl WebSocketRoomSubscriber {
                 .await;
         }
 
-        let mut players_names = Vec::new();
+        // Build updated mapping and uuid list
+        let mut mapping: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         for uuid in room.get_player_uuids() {
             if let Some(name) = self.player_mapping.get_playername(&uuid).await {
-                players_names.push(name);
+                mapping.insert(uuid.clone(), name);
             }
         }
 
         // Create WebSocket message for updated players list
-        let players_list_message = WebSocketMessage::players_list(players_names);
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
         let players_list_json = serde_json::to_string(&players_list_message).map_err(|e| {
             RoomEventError::HandlerError(format!("Failed to serialize PLAYERS_LIST message: {}", e))
         })?;
@@ -436,7 +440,12 @@ impl WebSocketRoomSubscriber {
             .ok_or(RoomEventError::RoomNotFound(room_id.to_string()))?;
 
         if room.host_uuid != Some(host.to_string()) {
-            info!(room_id = %room_id, "Host is not the current host, cannot start game");
+            info!(
+                room_id = %room_id,
+                host = %host,
+                "Host is not the current host, cannot start game. Room host: {:?}",
+                room.host_uuid
+            );
             return Ok(());
         }
 

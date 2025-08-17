@@ -224,7 +224,12 @@ pub mod test_utils {
         /// Convenience method for tests that want to provide a room repository
         /// This creates a RoomService with the given repository
         pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
-            self.room_service = Some(Arc::new(RoomService::new(repo)));
+            let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
+                Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
+            });
+            self.room_service = Some(Arc::new(RoomService::new(repo, player_mapping.clone())));
+            // Ensure the player_mapping is stored for later use
+            self.player_mapping = Some(player_mapping);
             self
         }
 
@@ -247,7 +252,7 @@ pub mod test_utils {
             let session_repository = self
                 .session_repository
                 .unwrap_or_else(|| Arc::new(DummySessionRepository));
-            let player_mapping = self.player_mapping.unwrap_or_else(|| {
+            let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
                 Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
             });
             let session_service = self.session_service.unwrap_or_else(|| {
@@ -256,9 +261,15 @@ pub mod test_utils {
                     player_mapping.clone(),
                 ))
             });
-            let room_service = self
-                .room_service
-                .unwrap_or_else(|| Arc::new(RoomService::new(Arc::new(DummyRoomRepository))));
+            let room_service = self.room_service.unwrap_or_else(|| {
+                let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
+                    Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
+                });
+                Arc::new(RoomService::new(
+                    Arc::new(DummyRoomRepository),
+                    player_mapping,
+                ))
+            });
 
             let game_service = self
                 .game_service
