@@ -174,18 +174,18 @@ impl RoomService {
     pub async fn leave_room(
         &self,
         room_id: String,
-        player_name: String,
+        player_uuid: String,
     ) -> Result<LeaveRoomResult, AppError> {
-        debug!(room_id = %room_id, player_name = %player_name, "Attempting to leave room");
+        debug!(room_id = %room_id, player_uuid = %player_uuid, "Attempting to leave room");
 
         // Use the atomic leave_room method
-        let result = self.repository.leave_room(&room_id, &player_name).await?;
+        let result = self.repository.leave_room(&room_id, &player_uuid).await?;
 
         match &result {
             LeaveRoomResult::Success(updated_room) => {
                 info!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     new_player_count = updated_room.get_player_count(),
                     "Player left room successfully"
                 );
@@ -193,21 +193,21 @@ impl RoomService {
             LeaveRoomResult::RoomDeleted => {
                 info!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     "Room deleted after last player left"
                 );
             }
             LeaveRoomResult::PlayerNotInRoom => {
                 debug!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     "Player was not in room"
                 );
             }
             LeaveRoomResult::RoomNotFound => {
                 debug!(
                     room_id = %room_id,
-                    player_name = %player_name,
+                    player_uuid = %player_uuid,
                     "Room not found"
                 );
             }

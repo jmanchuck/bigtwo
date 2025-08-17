@@ -315,12 +315,6 @@ impl WebSocketRoomSubscriber {
             "Processing leave request"
         );
 
-        let player_name = self
-            .player_mapping
-            .get_playername(player_uuid)
-            .await
-            .unwrap();
-
         // Get room state before leaving to detect host changes
         let room_before = self
             .room_service
@@ -336,7 +330,7 @@ impl WebSocketRoomSubscriber {
         // Perform the leave operation using room service
         match self
             .room_service
-            .leave_room(room_id.to_string(), player_name.to_string())
+            .leave_room(room_id.to_string(), player_uuid.to_string())
             .await
         {
             Ok(LeaveRoomResult::Success(updated_room)) => {
@@ -345,7 +339,7 @@ impl WebSocketRoomSubscriber {
                     .emit_to_room(
                         room_id,
                         RoomEvent::PlayerLeft {
-                            player: player_name.to_string(),
+                            player: player_uuid.to_string(),
                         },
                     )
                     .await;
@@ -356,7 +350,7 @@ impl WebSocketRoomSubscriber {
                         .emit_to_room(
                             room_id,
                             RoomEvent::HostChanged {
-                                old_host: player_name.to_string(),
+                                old_host: player_uuid.to_string(),
                                 new_host: updated_room.host_uuid.clone().unwrap(),
                             },
                         )
@@ -365,21 +359,21 @@ impl WebSocketRoomSubscriber {
 
                 info!(
                     room_id = %room_id,
-                    player = %player_name,
+                    player_uuid = %player_uuid,
                     "Leave request processed successfully"
                 );
             }
             Ok(LeaveRoomResult::RoomDeleted) => {
                 info!(
                     room_id = %room_id,
-                    player = %player_name,
+                    player_uuid = %player_uuid,
                     "Room deleted after player left"
                 );
             }
             Ok(_) => {
                 info!(
                     room_id = %room_id,
-                    player = %player_name,
+                    player_uuid = %player_uuid,
                     "Player was not in room or room not found"
                 );
             }
