@@ -38,7 +38,20 @@ pub async fn create_room(
 
     // Use injected service from app state
     let service = Arc::clone(&state.room_service);
-    let room = service.create_room(request).await?;
+    let room_model = service.create_room(request).await?;
+    // Map host UUID to display name for response
+    let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
+    let host_name = state
+        .player_mapping
+        .get_playername(&host_uuid)
+        .await
+        .unwrap_or(host_uuid);
+    let room = RoomResponse {
+        id: room_model.id.clone(),
+        host_name,
+        status: room_model.status.clone(),
+        player_count: room_model.get_player_count(),
+    };
 
     // Start WebSocket room subscription for this room
     let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
@@ -80,7 +93,23 @@ pub async fn list_rooms(
 
     // Use injected service from app state
     let service = Arc::clone(&state.room_service);
-    let rooms = service.list_rooms().await?;
+    let models = service.list_rooms().await?;
+    let mut rooms = Vec::with_capacity(models.len());
+    for m in models {
+        let host_uuid = m.host_uuid.clone().unwrap_or_default();
+        let host_name = state
+            .player_mapping
+            .get_playername(&host_uuid)
+            .await
+            .unwrap_or(host_uuid);
+        let player_count = m.get_player_count();
+        rooms.push(RoomResponse {
+            id: m.id,
+            host_name,
+            status: m.status,
+            player_count,
+        });
+    }
 
     info!(room_count = rooms.len(), "Rooms listed successfully");
 
@@ -117,9 +146,21 @@ pub async fn join_room(
         .ok_or_else(|| AppError::Unauthorized("No player UUID for session".to_string()))?;
 
     // Join the room (business logic) using UUID
-    let room = service
+    let room_model = service
         .join_room(room_id.clone(), player_uuid.clone())
         .await?;
+    let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
+    let host_name = state
+        .player_mapping
+        .get_playername(&host_uuid)
+        .await
+        .unwrap_or(host_uuid);
+    let room = RoomResponse {
+        id: room_model.id.clone(),
+        host_name,
+        status: room_model.status.clone(),
+        player_count: room_model.get_player_count(),
+    };
 
     // Emit room-specific event directly to room subscribers
     state
@@ -149,7 +190,19 @@ pub async fn get_room_details(
 ) -> Result<Json<RoomResponse>, AppError> {
     // Get room without requiring auth - just returns room info
     let service = Arc::clone(&state.room_service);
-    let room = service.get_room_details(room_id.clone()).await?;
+    let room_model = service.get_room_details(room_id.clone()).await?;
+    let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
+    let host_name = state
+        .player_mapping
+        .get_playername(&host_uuid)
+        .await
+        .unwrap_or(host_uuid);
+    let room = RoomResponse {
+        id: room_model.id.clone(),
+        host_name,
+        status: room_model.status.clone(),
+        player_count: room_model.get_player_count(),
+    };
 
     Ok(Json(room))
 }
@@ -183,14 +236,28 @@ mod tests {
             .await
             .unwrap();
 
-        let service = super::super::service::RoomService::new(room_repository, player_mapping);
+        let service = super::super::service::RoomService::new(room_repository);
 
         // Create room using service directly with UUID
         let request = RoomCreateRequest {
             host_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         };
 
-        let room_response = service.create_room(request).await.unwrap();
+        let model = service.create_room(request).await.unwrap();
+        let id = model.id.clone();
+        let status = model.status.clone();
+        let player_count = model.get_player_count();
+        let host_uuid = model.host_uuid.clone().unwrap_or_default();
+        let host_name = player_mapping
+            .get_playername(&host_uuid)
+            .await
+            .unwrap_or(host_uuid);
+        let room_response = RoomResponse {
+            id,
+            host_name,
+            status,
+            player_count,
+        };
 
         // Verify room response
         assert!(!room_response.id.is_empty());
@@ -213,14 +280,19 @@ mod tests {
             .await
             .unwrap();
 
-        let service = super::super::service::RoomService::new(room_repository, player_mapping);
+        let service = super::super::service::RoomService::new(room_repository);
 
         let request = RoomCreateRequest {
             host_uuid: "550e8400-e29b-41d4-a716-446655440001".to_string(),
         };
 
-        let room_response = service.create_room(request).await.unwrap();
-        assert_eq!(room_response.host_name, "player-with-special-chars!@#");
+        let model = service.create_room(request).await.unwrap();
+        let host_uuid = model.host_uuid.clone().unwrap_or_default();
+        let host_name = player_mapping
+            .get_playername(&host_uuid)
+            .await
+            .unwrap_or(host_uuid);
+        assert_eq!(host_name, "player-with-special-chars!@#");
     }
 
     #[tokio::test]
@@ -229,14 +301,19 @@ mod tests {
         let player_mapping =
             Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new());
 
-        let service = super::super::service::RoomService::new(room_repository, player_mapping);
+        let service = super::super::service::RoomService::new(room_repository);
 
         let request = RoomCreateRequest {
             host_uuid: "".to_string(),
         };
 
-        let room_response = service.create_room(request).await.unwrap();
-        assert_eq!(room_response.host_name, ""); // Empty UUID should map to empty string
+        let model = service.create_room(request).await.unwrap();
+        let host_uuid = model.host_uuid.clone().unwrap_or_default();
+        let host_name = player_mapping
+            .get_playername(&host_uuid)
+            .await
+            .unwrap_or(host_uuid);
+        assert_eq!(host_name, ""); // Empty UUID should map to empty string
     }
 
     #[tokio::test]

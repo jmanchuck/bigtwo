@@ -105,12 +105,7 @@ impl AppStateBuilder {
     /// Convenience method for providing a room repository
     /// This creates a RoomService with the given repository and player mapping
     pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
-        let player_mapping = self.player_mapping.clone().unwrap_or_else(|| {
-            Arc::new(crate::user::mapping_service::InMemoryPlayerMappingService::new())
-        });
-        self.room_service = Some(Arc::new(RoomService::new(repo, player_mapping.clone())));
-        // Ensure the player_mapping is stored for later use
-        self.player_mapping = Some(player_mapping);
+        self.room_service = Some(Arc::new(RoomService::new(repo)));
         self
     }
 
@@ -193,10 +188,9 @@ impl AppStateBuilder {
         });
 
         let room_service = self.room_service.unwrap_or_else(|| {
-            Arc::new(RoomService::new(
-                Arc::new(crate::room::repository::InMemoryRoomRepository::new()),
-                player_mapping.clone(),
-            ))
+            Arc::new(RoomService::new(Arc::new(
+                crate::room::repository::InMemoryRoomRepository::new(),
+            )))
         });
 
         let game_service = self
@@ -377,12 +371,9 @@ pub mod test_utils {
                     player_mapping.clone(),
                 ))
             });
-            let room_service = self.room_service.unwrap_or_else(|| {
-                Arc::new(RoomService::new(
-                    Arc::new(DummyRoomRepository),
-                    player_mapping.clone(),
-                ))
-            });
+            let room_service = self
+                .room_service
+                .unwrap_or_else(|| Arc::new(RoomService::new(Arc::new(DummyRoomRepository))));
 
             let game_service = self
                 .game_service

@@ -130,7 +130,7 @@ impl TestSetupBuilder {
         let _game_subscription_handle = game_subscription.start().await;
 
         // Create websocket subscriber to handle message broadcasting
-        let room_service = Arc::new(RoomService::new(repo.clone(), player_mapping.clone()));
+        let room_service = Arc::new(RoomService::new(repo.clone()));
         let output_subscriber = WebSocketRoomSubscriber::new(
             room_service,
             mock_conn_manager.clone(),
