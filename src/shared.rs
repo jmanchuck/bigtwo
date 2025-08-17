@@ -136,24 +136,26 @@ impl AppStateBuilder {
 
     /// Build AppState with validation
     pub fn build(self) -> Result<AppState, AppStateBuilderError> {
-        let session_repository = self
-            .session_repository
-            .ok_or(AppStateBuilderError::MissingDependency("session_repository"))?;
+        let session_repository =
+            self.session_repository
+                .ok_or(AppStateBuilderError::MissingDependency(
+                    "session_repository",
+                ))?;
         let player_mapping = self
             .player_mapping
             .ok_or(AppStateBuilderError::MissingDependency("player_mapping"))?;
-        let session_service = self.session_service.ok_or_else(|| {
-            AppStateBuilderError::MissingDependency("session_service")
-        })?;
+        let session_service = self
+            .session_service
+            .ok_or_else(|| AppStateBuilderError::MissingDependency("session_service"))?;
         let room_service = self
             .room_service
             .ok_or(AppStateBuilderError::MissingDependency("room_service"))?;
-        let event_bus = self
-            .event_bus
-            .unwrap_or_else(|| EventBus::new());
-        let connection_manager = self
-            .connection_manager
-            .ok_or(AppStateBuilderError::MissingDependency("connection_manager"))?;
+        let event_bus = self.event_bus.unwrap_or_else(|| EventBus::new());
+        let connection_manager =
+            self.connection_manager
+                .ok_or(AppStateBuilderError::MissingDependency(
+                    "connection_manager",
+                ))?;
         let game_service = self
             .game_service
             .ok_or(AppStateBuilderError::MissingDependency("game_service"))?;
@@ -174,10 +176,10 @@ impl AppStateBuilder {
     #[cfg(test)]
     pub fn build_with_defaults(self) -> AppState {
         use crate::user::mapping_service::InMemoryPlayerMappingService;
-        
-        let player_mapping = self.player_mapping.unwrap_or_else(|| {
-            Arc::new(InMemoryPlayerMappingService::new())
-        });
+
+        let player_mapping = self
+            .player_mapping
+            .unwrap_or_else(|| Arc::new(InMemoryPlayerMappingService::new()));
 
         let session_repository = self.session_repository.unwrap_or_else(|| {
             Arc::new(crate::session::repository::InMemorySessionRepository::new())
@@ -201,9 +203,9 @@ impl AppStateBuilder {
             .game_service
             .unwrap_or_else(|| Arc::new(GameService::new(player_mapping.clone())));
 
-        let connection_manager = self.connection_manager.unwrap_or_else(|| {
-            Arc::new(crate::websockets::InMemoryConnectionManager::new())
-        });
+        let connection_manager = self
+            .connection_manager
+            .unwrap_or_else(|| Arc::new(crate::websockets::InMemoryConnectionManager::new()));
 
         AppState {
             session_repository,
