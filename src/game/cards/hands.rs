@@ -99,7 +99,10 @@ impl TripleHand {
             return Err(HandError::InvalidHandType);
         }
 
-        let high_card = *[card1, card2, card3].iter().max().unwrap();
+        let high_card = *[card1, card2, card3]
+            .iter()
+            .max()
+            .expect("TripleHand should have exactly 3 cards for max calculation");
 
         // Store cards in sorted order by suit
         let mut cards = [card1, card2, card3];
@@ -136,7 +139,11 @@ pub struct StraightHand {
 
 impl StraightHand {
     pub fn new(cards: Vec<Card>) -> Self {
-        let high_card = *cards.iter().max().unwrap();
+        assert!(!cards.is_empty(), "StraightHand requires at least one card");
+        let high_card = *cards
+            .iter()
+            .max()
+            .expect("StraightHand should have cards for max calculation");
         Self { cards, high_card }
     }
 }
@@ -164,7 +171,10 @@ pub struct FlushHand {
 impl FlushHand {
     pub fn new(cards: Vec<Card>) -> Self {
         let suit = cards[0].suit; // All cards have same suit in a flush
-        let high_card = *cards.iter().max().unwrap();
+        let high_card = *cards
+            .iter()
+            .max()
+            .expect("FlushHand should have cards for max calculation");
         Self {
             cards,
             suit,
@@ -199,8 +209,15 @@ pub struct FullHouseHand {
 impl FullHouseHand {
     pub fn new(cards: Vec<Card>) -> Self {
         let rank_counts = Self::count_ranks(&cards);
-        let triple_rank = *rank_counts.iter().find(|(_, &count)| count == 3).unwrap().0;
-        let high_card = *cards.iter().max().unwrap();
+        let triple_rank = *rank_counts
+            .iter()
+            .find(|(_, &count)| count == 3)
+            .expect("FullHouseHand should have exactly one rank with 3 cards")
+            .0;
+        let high_card = *cards
+            .iter()
+            .max()
+            .expect("FullHouseHand should have cards for max calculation");
         Self {
             cards,
             triple_rank,
@@ -240,8 +257,15 @@ pub struct FourOfAKindHand {
 impl FourOfAKindHand {
     pub fn new(cards: Vec<Card>) -> Self {
         let rank_counts = Self::count_ranks(&cards);
-        let quad_rank = *rank_counts.iter().find(|(_, &count)| count == 4).unwrap().0;
-        let high_card = *cards.iter().max().unwrap();
+        let quad_rank = *rank_counts
+            .iter()
+            .find(|(_, &count)| count == 4)
+            .expect("FourOfAKindHand should have exactly one rank with 4 cards")
+            .0;
+        let high_card = *cards
+            .iter()
+            .max()
+            .expect("FourOfAKindHand should have cards for max calculation");
         Self {
             cards,
             quad_rank,
@@ -281,7 +305,10 @@ pub struct StraightFlushHand {
 impl StraightFlushHand {
     pub fn new(cards: Vec<Card>) -> Self {
         let suit = cards[0].suit; // All cards have same suit
-        let high_card = *cards.iter().max().unwrap();
+        let high_card = *cards
+            .iter()
+            .max()
+            .expect("StraightFlushHand should have cards for max calculation");
         Self {
             cards,
             suit,
@@ -536,4 +563,474 @@ pub fn compare_played_cards(
     };
 
     Ok(played_hand.can_beat(&current_hand))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[test]
+    fn test_single_hand() {
+        let card1 = Card::new(Rank::King, Suit::Hearts);
+        let card2 = Card::new(Rank::Queen, Suit::Spades);
+
+        let hand1 = Hand::from_cards(&vec![card1]).unwrap();
+        let hand2 = Hand::from_cards(&vec![card2]).unwrap();
+
+        assert!(hand1.can_beat(&hand2));
+
+        // Test that we can't compare across types
+        let pair = Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Three, Suit::Spades),
+        ])
+        .unwrap();
+
+        assert!(!hand1.can_beat(&pair)); // Single cannot beat pair
+        assert!(!pair.can_beat(&hand1)); // Pair cannot beat single
+    }
+
+    #[test]
+    fn test_pair_hand() {
+        let pair1 = Hand::from_cards(&vec![
+            Card::new(Rank::King, Suit::Hearts),
+            Card::new(Rank::King, Suit::Spades),
+        ])
+        .unwrap();
+
+        let pair2 = Hand::from_cards(&vec![
+            Card::new(Rank::Queen, Suit::Diamonds),
+            Card::new(Rank::Queen, Suit::Clubs),
+        ])
+        .unwrap();
+
+        assert!(pair1.can_beat(&pair2));
+
+        // Test same rank pairs with different suits
+        let pair3 = Hand::from_cards(&vec![
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+        ])
+        .unwrap();
+
+        assert!(pair1.can_beat(&pair3)); // Spades beats Clubs for the high card
+    }
+
+    #[test]
+    fn test_triple_hand() {
+        let triple1 = Hand::from_cards(&vec![
+            Card::new(Rank::King, Suit::Hearts),
+            Card::new(Rank::King, Suit::Spades),
+            Card::new(Rank::King, Suit::Diamonds),
+        ])
+        .unwrap();
+
+        let triple2 = Hand::from_cards(&vec![
+            Card::new(Rank::Queen, Suit::Hearts),
+            Card::new(Rank::Queen, Suit::Spades),
+            Card::new(Rank::Queen, Suit::Diamonds),
+        ])
+        .unwrap();
+
+        assert!(triple1.can_beat(&triple2));
+    }
+
+    #[test]
+    fn test_construct_invalid_straight() {
+        let straight = Hand::from_cards(&vec![
+            Card::new(Rank::Jack, Suit::Hearts),
+            Card::new(Rank::Queen, Suit::Spades),
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::Ace, Suit::Clubs),
+            Card::new(Rank::Two, Suit::Hearts),
+        ]);
+
+        assert!(straight.is_err());
+        assert_eq!(straight.err(), Some(HandError::InvalidHandType));
+    }
+
+    #[test]
+    fn test_construct_valid_straight_with_ace() {
+        let straight = Hand::from_cards(&vec![
+            Card::new(Rank::Ace, Suit::Hearts),
+            Card::new(Rank::Two, Suit::Spades),
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::Four, Suit::Clubs),
+            Card::new(Rank::Five, Suit::Hearts),
+        ]);
+
+        assert!(straight.is_ok());
+    }
+
+    #[test]
+    fn test_construct_valid_ace_high_straight() {
+        let straight = Hand::from_cards(&vec![
+            Card::new(Rank::Ten, Suit::Hearts),
+            Card::new(Rank::Jack, Suit::Spades),
+            Card::new(Rank::Queen, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+            Card::new(Rank::Ace, Suit::Hearts),
+        ]);
+
+        assert!(straight.is_ok());
+        match straight.unwrap() {
+            Hand::Five(FiveCardHand::Straight(_)) => (),
+            _ => panic!("Expected straight hand"),
+        }
+    }
+
+    #[test]
+    fn test_straight() {
+        let straight = Hand::from_cards(&vec![
+            Card::new(Rank::Six, Suit::Clubs),
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Five, Suit::Diamonds),
+            Card::new(Rank::Four, Suit::Spades),
+            Card::new(Rank::Seven, Suit::Hearts),
+        ])
+        .unwrap();
+
+        match straight {
+            Hand::Five(five) => match five {
+                FiveCardHand::Straight(_) => (),
+                _ => panic!("Expected straight hand"),
+            },
+            _ => panic!("Expected five card hand"),
+        }
+    }
+
+    #[rstest]
+    #[case(vec![
+        Card::new(Rank::King, Suit::Hearts),
+        Card::new(Rank::Ace, Suit::Spades),
+        Card::new(Rank::Two, Suit::Diamonds),
+        Card::new(Rank::Three, Suit::Clubs),
+        Card::new(Rank::Four, Suit::Hearts),
+    ])] // K-A-2-3-4 wraparound
+    #[case(vec![
+        Card::new(Rank::Queen, Suit::Hearts),
+        Card::new(Rank::King, Suit::Spades),
+        Card::new(Rank::Ace, Suit::Diamonds),
+        Card::new(Rank::Two, Suit::Clubs),
+        Card::new(Rank::Three, Suit::Hearts),
+    ])] // Q-K-A-2-3 wraparound
+    #[case(vec![
+        Card::new(Rank::Ace, Suit::Hearts),
+        Card::new(Rank::Two, Suit::Spades),
+        Card::new(Rank::Three, Suit::Diamonds),
+        Card::new(Rank::Four, Suit::Clubs),
+        Card::new(Rank::Six, Suit::Hearts),
+    ])] // A-2-3-4-6 (not consecutive)
+    #[case(vec![
+        Card::new(Rank::Two, Suit::Hearts),
+        Card::new(Rank::Three, Suit::Spades),
+        Card::new(Rank::Four, Suit::Diamonds),
+        Card::new(Rank::Five, Suit::Clubs),
+        Card::new(Rank::Seven, Suit::Hearts),
+    ])] // 2-3-4-5-7 (not consecutive)
+    fn test_invalid_straights(#[case] cards: Vec<Card>) {
+        let result = Hand::from_cards(&cards);
+        assert!(result.is_err());
+        assert_eq!(result.err(), Some(HandError::InvalidHandType));
+    }
+
+    #[rstest]
+    #[case(vec![
+        Card::new(Rank::Three, Suit::Hearts),
+        Card::new(Rank::Four, Suit::Spades),
+        Card::new(Rank::Five, Suit::Diamonds),
+        Card::new(Rank::Six, Suit::Clubs),
+        Card::new(Rank::Seven, Suit::Hearts),
+    ])] // 3-4-5-6-7
+    #[case(vec![
+        Card::new(Rank::Seven, Suit::Hearts),
+        Card::new(Rank::Eight, Suit::Spades),
+        Card::new(Rank::Nine, Suit::Diamonds),
+        Card::new(Rank::Ten, Suit::Clubs),
+        Card::new(Rank::Jack, Suit::Hearts),
+    ])] // 7-8-9-10-J
+    #[case(vec![
+        Card::new(Rank::Nine, Suit::Hearts),
+        Card::new(Rank::Ten, Suit::Spades),
+        Card::new(Rank::Jack, Suit::Diamonds),
+        Card::new(Rank::Queen, Suit::Clubs),
+        Card::new(Rank::King, Suit::Hearts),
+    ])] // 9-10-J-Q-K
+    fn test_valid_normal_straights(#[case] cards: Vec<Card>) {
+        let result = Hand::from_cards(&cards);
+        assert!(result.is_ok());
+        match result.unwrap() {
+            Hand::Five(FiveCardHand::Straight(_)) => (),
+            _ => panic!("Expected straight hand"),
+        }
+    }
+
+    #[rstest]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Four, Suit::Spades),
+            Card::new(Rank::Five, Suit::Diamonds),
+            Card::new(Rank::Six, Suit::Clubs),
+            Card::new(Rank::Seven, Suit::Hearts),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Six, Suit::Spades),
+            Card::new(Rank::Seven, Suit::Diamonds),
+            Card::new(Rank::Eight, Suit::Clubs),
+            Card::new(Rank::Nine, Suit::Diamonds),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Six, Suit::Spades),
+            Card::new(Rank::Seven, Suit::Diamonds),
+            Card::new(Rank::Eight, Suit::Clubs),
+            Card::new(Rank::Nine, Suit::Spades),
+        ])
+        .unwrap(), false)]
+    fn test_straight_comparison_with_straight(#[case] other_hand: Hand, #[case] expected: bool) {
+        let straight = Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Six, Suit::Spades),
+            Card::new(Rank::Seven, Suit::Diamonds),
+            Card::new(Rank::Eight, Suit::Clubs),
+            Card::new(Rank::Nine, Suit::Hearts),
+        ])
+        .unwrap();
+
+        assert_eq!(straight.can_beat(&other_hand), expected);
+    }
+
+    #[rstest]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Diamonds),
+            Card::new(Rank::Six, Suit::Diamonds),
+            Card::new(Rank::Seven, Suit::Diamonds),
+            Card::new(Rank::Eight, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Diamonds),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Spades),
+            Card::new(Rank::Six, Suit::Spades),
+            Card::new(Rank::Seven, Suit::Spades),
+            Card::new(Rank::Eight, Suit::Spades),
+            Card::new(Rank::Jack, Suit::Spades),
+        ])
+        .unwrap(), false)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Six, Suit::Hearts),
+            Card::new(Rank::Seven, Suit::Hearts),
+            Card::new(Rank::Eight, Suit::Hearts),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap(), false)]
+    fn test_flush_comparison_with_flush(#[case] other_hand: Hand, #[case] expected: bool) {
+        let flush = Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Six, Suit::Hearts),
+            Card::new(Rank::Seven, Suit::Hearts),
+            Card::new(Rank::Eight, Suit::Hearts),
+            Card::new(Rank::Jack, Suit::Hearts),
+        ])
+        .unwrap();
+
+        assert_eq!(flush.can_beat(&other_hand), expected);
+    }
+
+    #[rstest]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Four, Suit::Spades),
+            Card::new(Rank::Five, Suit::Diamonds),
+            Card::new(Rank::Six, Suit::Clubs),
+            Card::new(Rank::Seven, Suit::Hearts),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Seven, Suit::Hearts),
+            Card::new(Rank::Nine, Suit::Hearts),
+            Card::new(Rank::Jack, Suit::Hearts),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Three, Suit::Spades),
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Two, Suit::Hearts),
+            Card::new(Rank::Two, Suit::Spades),
+            Card::new(Rank::Two, Suit::Diamonds),
+            Card::new(Rank::Two, Suit::Clubs),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap(), false)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Four, Suit::Hearts),
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Six, Suit::Hearts),
+            Card::new(Rank::Seven, Suit::Hearts),
+        ])
+        .unwrap(), false)]
+    fn test_four_of_a_kind_comparison(#[case] other_hand: Hand, #[case] expected: bool) {
+        let four_of_a_kind = Hand::from_cards(&vec![
+            Card::new(Rank::Ace, Suit::Hearts),
+            Card::new(Rank::Ace, Suit::Spades),
+            Card::new(Rank::Ace, Suit::Diamonds),
+            Card::new(Rank::Ace, Suit::Clubs),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap();
+
+        assert_eq!(four_of_a_kind.can_beat(&other_hand), expected);
+    }
+
+    #[test]
+    fn test_full_house() {
+        let full_house = Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Three, Suit::Spades),
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap();
+
+        match full_house {
+            Hand::Five(five) => match five {
+                FiveCardHand::FullHouse(_) => (),
+                _ => panic!("Expected full house"),
+            },
+            _ => panic!("Expected five card hand"),
+        }
+    }
+
+    #[rstest]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Three, Suit::Spades),
+            Card::new(Rank::Three, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap(), true)]
+    #[case(Hand::from_cards(&vec![
+            Card::new(Rank::Queen, Suit::Hearts),
+            Card::new(Rank::Queen, Suit::Spades),
+            Card::new(Rank::Queen, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+            Card::new(Rank::King, Suit::Hearts),
+        ])
+        .unwrap(), false)]
+    fn test_full_house_comparison(#[case] other_hand: Hand, #[case] expected: bool) {
+        let full_house = Hand::from_cards(&vec![
+            Card::new(Rank::Five, Suit::Hearts),
+            Card::new(Rank::Five, Suit::Spades),
+            Card::new(Rank::Five, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+            Card::new(Rank::King, Suit::Diamonds),
+        ])
+        .unwrap();
+
+        assert_eq!(full_house.can_beat(&other_hand), expected);
+    }
+
+    #[rstest]
+    #[case(vec![], "Pass")]
+    #[case(vec![Card::new(Rank::King, Suit::Hearts)], "Single")]
+    #[case(vec![
+        Card::new(Rank::King, Suit::Hearts),
+        Card::new(Rank::King, Suit::Spades),
+    ], "Pair")]
+    #[case(vec![
+        Card::new(Rank::King, Suit::Hearts),
+        Card::new(Rank::King, Suit::Spades),
+        Card::new(Rank::King, Suit::Diamonds),
+    ], "Triple")]
+    #[case(vec![
+        Card::new(Rank::Three, Suit::Hearts),
+        Card::new(Rank::Four, Suit::Spades),
+        Card::new(Rank::Five, Suit::Diamonds),
+        Card::new(Rank::Six, Suit::Clubs),
+        Card::new(Rank::Seven, Suit::Hearts),
+    ], "Straight")]
+    #[case(vec![
+        Card::new(Rank::Three, Suit::Hearts),
+        Card::new(Rank::Five, Suit::Hearts),
+        Card::new(Rank::Seven, Suit::Hearts),
+        Card::new(Rank::Nine, Suit::Hearts),
+        Card::new(Rank::Jack, Suit::Hearts),
+    ], "Flush")]
+    #[case(vec![
+        Card::new(Rank::Three, Suit::Hearts),
+        Card::new(Rank::Three, Suit::Spades),
+        Card::new(Rank::Three, Suit::Diamonds),
+        Card::new(Rank::King, Suit::Clubs),
+        Card::new(Rank::King, Suit::Hearts),
+    ], "Full House")]
+    #[case(vec![
+        Card::new(Rank::Three, Suit::Hearts),
+        Card::new(Rank::Three, Suit::Spades),
+        Card::new(Rank::Three, Suit::Diamonds),
+        Card::new(Rank::Three, Suit::Clubs),
+        Card::new(Rank::King, Suit::Hearts),
+    ], "Four of a Kind")]
+    #[case(vec![
+        Card::new(Rank::Three, Suit::Hearts),
+        Card::new(Rank::Four, Suit::Hearts),
+        Card::new(Rank::Five, Suit::Hearts),
+        Card::new(Rank::Six, Suit::Hearts),
+        Card::new(Rank::Seven, Suit::Hearts),
+    ], "Straight Flush")]
+    fn test_hand_type_names(#[case] cards: Vec<Card>, #[case] expected_name: &str) {
+        let hand = Hand::from_cards(&cards).unwrap();
+        assert_eq!(hand.hand_type_name(), expected_name);
+    }
+
+    #[test]
+    fn test_invalid_hands() {
+        // Invalid pair (different ranks)
+        let result = Hand::from_cards(&vec![
+            Card::new(Rank::King, Suit::Hearts),
+            Card::new(Rank::Queen, Suit::Spades),
+        ]);
+        assert!(result.is_err());
+
+        // Invalid hand size
+        let result = Hand::from_cards(&vec![
+            Card::new(Rank::King, Suit::Hearts),
+            Card::new(Rank::King, Suit::Spades),
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+        ]);
+        assert!(result.is_err());
+    }
+
+    #[rstest]
+    #[case(vec![], vec![], true)] // For technicality, pass 'beats' pass
+    #[case(vec![], vec![Card::from_string("3D").unwrap()], true)] // Pass doesn't beat 3D
+    #[case(vec![Card::from_string("KH").unwrap()], vec![Card::from_string("QS").unwrap()], true)] // QS doesn't beat KH
+    #[case(vec![Card::from_string("QS").unwrap()], vec![Card::from_string("KH").unwrap()], false)] // KH beats QS
+    #[case(vec![Card::from_string("KH").unwrap()], vec![Card::from_string("KH").unwrap()], false)] // Same card doesn't beat itself
+    #[case(vec![Card::from_string("KH").unwrap(), Card::from_string("KS").unwrap()], vec![Card::from_string("AH").unwrap(), Card::from_string("AS").unwrap()], false)] // AH-AS doesn't beat KH-KS
+    fn test_compare_played_cards(
+        #[case] played_cards: Vec<Card>,
+        #[case] current_cards: Vec<Card>,
+        #[case] expected: bool,
+    ) {
+        let result = compare_played_cards(&played_cards, &current_cards);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), expected);
+    }
 }

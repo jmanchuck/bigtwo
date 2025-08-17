@@ -1,12 +1,8 @@
 pub mod basic;
 pub mod hands;
 
-#[cfg(test)]
-mod tests;
-
 pub use basic::{Card, Rank, Suit};
 pub use hands::{
-    Hand, HandError, SingleHand, PairHand, TripleHand, FiveCardHand,
-    StraightHand, FlushHand, FullHouseHand, FourOfAKindHand, StraightFlushHand,
-    compare_played_cards,
+    compare_played_cards, FiveCardHand, FlushHand, FourOfAKindHand, FullHouseHand, Hand, HandError,
+    PairHand, SingleHand, StraightFlushHand, StraightHand, TripleHand,
 };

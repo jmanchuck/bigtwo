@@ -186,3 +186,141 @@ impl fmt::Display for Card {
         write!(f, "{}{}", self.rank, self.suit)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_card_ordering() {
+        let card1 = Card::new(Rank::Three, Suit::Diamonds);
+        let card2 = Card::new(Rank::Three, Suit::Spades);
+        let card3 = Card::new(Rank::Two, Suit::Diamonds);
+
+        assert!(card2 > card1); // Same rank, higher suit
+        assert!(card3 > card1); // Higher rank
+        assert!(card3 > card2); // Higher rank beats higher suit
+    }
+
+    #[test]
+    fn test_card_from_string() {
+        // Test various card string representations
+        let king_hearts = Card::from_string("KH").unwrap();
+        assert_eq!(king_hearts.rank, Rank::King);
+        assert_eq!(king_hearts.suit, Suit::Hearts);
+
+        let two_spades = Card::from_string("2S").unwrap();
+        assert_eq!(two_spades.rank, Rank::Two);
+        assert_eq!(two_spades.suit, Suit::Spades);
+
+        let ten_diamonds = Card::from_string("TD").unwrap();
+        assert_eq!(ten_diamonds.rank, Rank::Ten);
+        assert_eq!(ten_diamonds.suit, Suit::Diamonds);
+
+        // Test invalid strings
+        assert!(Card::from_string("ZH").is_err()); // Invalid rank
+        assert!(Card::from_string("KX").is_err()); // Invalid suit
+        assert!(Card::from_string("K").is_err()); // Too short
+    }
+
+    #[test]
+    fn test_suit_try_from() {
+        // Test valid suits
+        assert_eq!(Suit::try_from("D"), Ok(Suit::Diamonds));
+        assert_eq!(Suit::try_from("C"), Ok(Suit::Clubs));
+        assert_eq!(Suit::try_from("H"), Ok(Suit::Hearts));
+        assert_eq!(Suit::try_from("S"), Ok(Suit::Spades));
+
+        // Test invalid suits
+        assert!(Suit::try_from("X").is_err());
+        assert!(Suit::try_from("").is_err());
+        assert!(Suit::try_from("DD").is_err());
+    }
+
+    #[test]
+    fn test_suit_display() {
+        assert_eq!(Suit::Diamonds.to_string(), "D");
+        assert_eq!(Suit::Clubs.to_string(), "C");
+        assert_eq!(Suit::Hearts.to_string(), "H");
+        assert_eq!(Suit::Spades.to_string(), "S");
+    }
+
+    #[test]
+    fn test_rank_try_from() {
+        // Test valid ranks
+        assert_eq!(Rank::try_from("3"), Ok(Rank::Three));
+        assert_eq!(Rank::try_from("4"), Ok(Rank::Four));
+        assert_eq!(Rank::try_from("5"), Ok(Rank::Five));
+        assert_eq!(Rank::try_from("6"), Ok(Rank::Six));
+        assert_eq!(Rank::try_from("7"), Ok(Rank::Seven));
+        assert_eq!(Rank::try_from("8"), Ok(Rank::Eight));
+        assert_eq!(Rank::try_from("9"), Ok(Rank::Nine));
+        assert_eq!(Rank::try_from("T"), Ok(Rank::Ten));
+        assert_eq!(Rank::try_from("J"), Ok(Rank::Jack));
+        assert_eq!(Rank::try_from("Q"), Ok(Rank::Queen));
+        assert_eq!(Rank::try_from("K"), Ok(Rank::King));
+        assert_eq!(Rank::try_from("A"), Ok(Rank::Ace));
+        assert_eq!(Rank::try_from("2"), Ok(Rank::Two));
+
+        // Test invalid ranks
+        assert!(Rank::try_from("1").is_err());
+        assert!(Rank::try_from("0").is_err());
+        assert!(Rank::try_from("X").is_err());
+        assert!(Rank::try_from("").is_err());
+        assert!(Rank::try_from("TT").is_err());
+    }
+
+    #[test]
+    fn test_rank_display() {
+        assert_eq!(Rank::Three.to_string(), "3");
+        assert_eq!(Rank::Four.to_string(), "4");
+        assert_eq!(Rank::Five.to_string(), "5");
+        assert_eq!(Rank::Six.to_string(), "6");
+        assert_eq!(Rank::Seven.to_string(), "7");
+        assert_eq!(Rank::Eight.to_string(), "8");
+        assert_eq!(Rank::Nine.to_string(), "9");
+        assert_eq!(Rank::Ten.to_string(), "T");
+        assert_eq!(Rank::Jack.to_string(), "J");
+        assert_eq!(Rank::Queen.to_string(), "Q");
+        assert_eq!(Rank::King.to_string(), "K");
+        assert_eq!(Rank::Ace.to_string(), "A");
+        assert_eq!(Rank::Two.to_string(), "2");
+    }
+
+    #[test]
+    fn test_card_display() {
+        let king_hearts = Card::new(Rank::King, Suit::Hearts);
+        assert_eq!(king_hearts.to_string(), "KH");
+
+        let two_spades = Card::new(Rank::Two, Suit::Spades);
+        assert_eq!(two_spades.to_string(), "2S");
+
+        let ten_diamonds = Card::new(Rank::Ten, Suit::Diamonds);
+        assert_eq!(ten_diamonds.to_string(), "TD");
+
+        let ace_clubs = Card::new(Rank::Ace, Suit::Clubs);
+        assert_eq!(ace_clubs.to_string(), "AC");
+    }
+
+    #[test]
+    fn test_card_from_string_edge_cases() {
+        // Test empty string
+        assert!(Card::from_string("").is_err());
+
+        // Test single character
+        assert!(Card::from_string("K").is_err());
+
+        // Test three characters
+        assert!(Card::from_string("KHS").is_err());
+
+        // Test valid cards with all combinations
+        for rank in Rank::iter() {
+            for suit in Suit::iter() {
+                let card = Card::new(rank, suit);
+                let card_str = card.to_string();
+                let parsed_card = Card::from_string(&card_str).unwrap();
+                assert_eq!(card, parsed_card);
+            }
+        }
+    }
+}
