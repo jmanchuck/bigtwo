@@ -410,8 +410,9 @@ impl WebSocketRoomSubscriber {
                 ))
             })?;
 
+            // Send to the player's UUID, which is how connections are keyed
             self.connection_manager
-                .send_to_player(&player.name, &message_json)
+                .send_to_player(&player.uuid, &message_json)
                 .await;
         }
 
@@ -503,7 +504,7 @@ impl WebSocketRoomSubscriber {
             })?;
 
             self.connection_manager
-                .send_to_player(&game_player.name, &message_json)
+                .send_to_player(&game_player.uuid, &message_json)
                 .await;
         }
 
@@ -536,7 +537,7 @@ impl WebSocketRoomSubscriber {
         // Send to all players in the game
         for game_player in game.players() {
             self.connection_manager
-                .send_to_player(&game_player.name, &message_json)
+                .send_to_player(&game_player.uuid, &message_json)
                 .await;
         }
 
@@ -576,7 +577,7 @@ impl WebSocketRoomSubscriber {
         // Send to all players in the game
         for game_player in game.players() {
             self.connection_manager
-                .send_to_player(&game_player.name, &message_json)
+                .send_to_player(&game_player.uuid, &message_json)
                 .await;
         }
 

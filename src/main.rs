@@ -73,7 +73,7 @@ async fn main() {
     let room_service = Arc::new(RoomService::new(room_repository, player_mapping.clone()));
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
-    let game_service = Arc::new(GameService::new());
+    let game_service = Arc::new(GameService::new(player_mapping.clone()));
 
     let app_state = AppState::new(
         session_repository,

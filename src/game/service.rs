@@ -1,6 +1,7 @@
 use crate::{
     game::{cards::Card, core::Game, repository::GameRepository},
     shared::AppError,
+    user::PlayerMappingService,
 };
 
 #[derive(Debug, Clone)]
@@ -11,12 +12,14 @@ pub struct MoveResult {
 
 pub struct GameService {
     game_repository: GameRepository,
+    player_mapping: std::sync::Arc<dyn PlayerMappingService>,
 }
 
 impl GameService {
-    pub fn new() -> Self {
+    pub fn new(player_mapping: std::sync::Arc<dyn PlayerMappingService>) -> Self {
         Self {
             game_repository: GameRepository::new(),
+            player_mapping,
         }
     }
 
@@ -40,23 +43,36 @@ impl GameService {
         for player in player_uuids {
             if player.trim().is_empty() {
                 return Err(AppError::BadRequest(
-                    "Player names cannot be empty".to_string(),
+                    "Player UUIDs cannot be empty".to_string(),
                 ));
             }
         }
 
-        // Check for duplicate player names
+        // Check for duplicate player UUIDs
         let mut unique_players = std::collections::HashSet::new();
         for player in player_uuids {
             if !unique_players.insert(player.trim()) {
                 return Err(AppError::BadRequest(
-                    "All player names must be unique".to_string(),
+                    "All player UUIDs must be unique".to_string(),
                 ));
             }
         }
 
+        // Fetch player names for each UUID
+        let mut player_data = Vec::new();
+        for uuid in player_uuids {
+            let name = self
+                .player_mapping
+                .get_playername(uuid)
+                .await
+                .ok_or_else(|| {
+                    AppError::BadRequest(format!("Player name not found for UUID: {}", uuid))
+                })?;
+            player_data.push((name, uuid.clone()));
+        }
+
         self.game_repository
-            .create_game(room_id, player_uuids)
+            .create_game(room_id, &player_data)
             .await
             .map_err(|_e| AppError::Internal)?;
 
@@ -111,9 +127,9 @@ impl GameService {
     pub async fn create_game_with_cards(
         &self,
         room_id: &str,
-        player_cards: Vec<(String, Vec<Card>)>,
+        player_data: Vec<(String, String, Vec<Card>)>, // (name, uuid, cards)
     ) -> Result<Game, AppError> {
-        let game = Game::new_with_cards(room_id.to_string(), player_cards)
+        let game = Game::new_game_with_cards(room_id.to_string(), player_data)
             .map_err(|e| AppError::BadRequest(format!("Invalid game setup: {}", e)))?;
 
         self.game_repository
@@ -135,10 +151,10 @@ mod tests {
 
     fn create_test_players() -> Vec<String> {
         vec![
-            "Alice".to_string(),
-            "Bob".to_string(),
-            "Charlie".to_string(),
-            "David".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            "550e8400-e29b-41d4-a716-446655440001".to_string(),
+            "550e8400-e29b-41d4-a716-446655440002".to_string(),
+            "550e8400-e29b-41d4-a716-446655440003".to_string(),
         ]
     }
 
@@ -178,9 +194,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_game_success() {
-        let service = GameService::new();
+        use crate::user::mapping_service::InMemoryPlayerMappingService;
+        let player_mapping = std::sync::Arc::new(InMemoryPlayerMappingService::new());
 
+        // Register test players in the mapping service
         let players = create_test_players();
+        for player in &players {
+            player_mapping
+                .register_player(player.clone(), format!("Player{}", player))
+                .await
+                .unwrap();
+        }
+
+        let service = GameService::new(player_mapping);
         let result = service.create_game("test_room", &players).await;
 
         assert!(result.is_ok());
@@ -190,15 +216,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_play_move_success() {
-        let service = GameService::new();
+        use crate::user::mapping_service::InMemoryPlayerMappingService;
+        let player_mapping = std::sync::Arc::new(InMemoryPlayerMappingService::new());
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "alice-uuid".to_string(),
-            "bob-uuid".to_string(),
-            "charlie-uuid".to_string(),
-            "david-uuid".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            "550e8400-e29b-41d4-a716-446655440001".to_string(),
+            "550e8400-e29b-41d4-a716-446655440002".to_string(),
+            "550e8400-e29b-41d4-a716-446655440003".to_string(),
         ];
+
+        // Register test players in the mapping service
+        for player in &players {
+            player_mapping
+                .register_player(player.clone(), format!("Player{}", player))
+                .await
+                .unwrap();
+        }
+
+        let service = GameService::new(player_mapping);
         service.create_game("test_room", &players).await.unwrap();
 
         // Get the game to see who has 3D and goes first
@@ -221,7 +258,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_play_move_game_not_found() {
-        let service = GameService::new();
+        use crate::user::mapping_service::InMemoryPlayerMappingService;
+        let player_mapping = std::sync::Arc::new(InMemoryPlayerMappingService::new());
+        let service = GameService::new(player_mapping);
 
         let result = service
             .try_play_move(
@@ -240,15 +279,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_play_move_player_wins() {
-        let service = GameService::new();
+        use crate::user::mapping_service::InMemoryPlayerMappingService;
+        let player_mapping = std::sync::Arc::new(InMemoryPlayerMappingService::new());
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "alice-uuid".to_string(),
-            "bob-uuid".to_string(),
-            "charlie-uuid".to_string(),
-            "david-uuid".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            "550e8400-e29b-41d4-a716-446655440001".to_string(),
+            "550e8400-e29b-41d4-a716-446655440002".to_string(),
+            "550e8400-e29b-41d4-a716-446655440003".to_string(),
         ];
+
+        // Register test players in the mapping service
+        for player in &players {
+            player_mapping
+                .register_player(player.clone(), format!("Player{}", player))
+                .await
+                .unwrap();
+        }
+
+        let service = GameService::new(player_mapping);
         service.create_game("test_room", &players).await.unwrap();
 
         // Get the game and check who goes first

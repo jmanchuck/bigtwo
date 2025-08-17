@@ -1,7 +1,7 @@
 // Game history is a list of moves and a list of players (we can derive which player acted based on the history of moves), also has game ID
 
 // The game structure will be passed around to different handlers that can update the state of the game
-use crate::game::cards::{compare_played_cards, Card, Hand, HandError, Rank, Suit};
+use crate::game::cards::{Card, Hand, HandError, Rank, Suit};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -57,52 +57,8 @@ impl Game {
         }
     }
 
-    pub fn new_game(id: String, player_uuids: &[String]) -> Result<Self, GameError> {
-        // Big Two requires exactly 4 players
-        if player_uuids.len() != 4 {
-            return Err(GameError::InvalidPlayedCards);
-        }
-
-        // Randomly deal the 52 cards to the players
-        let mut cards = Card::all_cards();
-        cards.shuffle(&mut rand::rng());
-
-        let mut players: Vec<Player> = player_uuids
-            .iter()
-            .map(|uuid| {
-                let mut player_cards: Vec<Card> = cards.drain(0..13).collect();
-                player_cards.sort();
-                Player {
-                    // Until UI/display mapping is applied, store uuid in name field as placeholder
-                    name: uuid.to_string(),
-                    uuid: uuid.to_string(),
-                    cards: player_cards,
-                }
-            })
-            .collect();
-
-        // Capture starting hands before rotating players
-        let starting_hands: std::collections::HashMap<String, Vec<Card>> = players
-            .iter()
-            .map(|player| (player.name.clone(), player.cards.clone()))
-            .collect();
-
-        // The first player is the one with the 3 of diamonds
-        let first_player = players
-            .iter()
-            .position(|p| p.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)))
-            .ok_or(GameError::InvalidPlayedCards)?;
-
-        players.rotate_left(first_player);
-
-        Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
-    }
-
-    /// Creates a new game with UUID-enabled players (preferred method)
-    pub fn new_game_with_uuids(
-        id: String,
-        player_data: &[(String, String)], // (playername, uuid) pairs
-    ) -> Result<Self, GameError> {
+    /// Standard constructor: creates a new game with UUIDs and names
+    pub fn new_game(id: String, player_data: &[(String, String)]) -> Result<Self, GameError> {
         // Big Two requires exactly 4 players
         if player_data.len() != 4 {
             return Err(GameError::InvalidPlayedCards);
@@ -112,51 +68,36 @@ impl Game {
         let mut cards = Card::all_cards();
         cards.shuffle(&mut rand::rng());
 
-        let mut players: Vec<Player> = player_data
+        // Create player data with cards
+        let player_cards: Vec<(String, String, Vec<Card>)> = player_data
             .iter()
             .map(|(name, uuid)| {
                 let mut player_cards: Vec<Card> = cards.drain(0..13).collect();
                 player_cards.sort();
-                Player {
-                    name: name.to_string(),
-                    uuid: uuid.to_string(),
-                    cards: player_cards,
-                }
+                (name.clone(), uuid.clone(), player_cards) // (name, uuid, cards)
             })
             .collect();
 
-        // Capture starting hands before rotating players (keyed by UUID for internal use)
-        let starting_hands: std::collections::HashMap<String, Vec<Card>> = players
-            .iter()
-            .map(|player| (player.uuid.clone(), player.cards.clone()))
-            .collect();
-
-        // The first player is the one with the 3 of diamonds
-        let first_player = players
-            .iter()
-            .position(|p| p.cards.contains(&Card::new(Rank::Three, Suit::Diamonds)))
-            .ok_or(GameError::InvalidPlayedCards)?;
-
-        players.rotate_left(first_player);
-
-        Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
+        // Delegate to the more general constructor
+        Self::new_game_with_cards(id, player_cards)
     }
 
-    pub fn new_with_cards(
+    /// Testing/specialized constructor: creates a game with predetermined cards (no player count restriction)
+    pub fn new_game_with_cards(
         id: String,
-        player_cards: Vec<(String, Vec<Card>)>,
+        player_data: Vec<(String, String, Vec<Card>)>, // (name, uuid, cards)
     ) -> Result<Self, GameError> {
         // Create players with predetermined cards
         let mut players = Vec::new();
         let mut starting_hands = std::collections::HashMap::new();
 
-        for (i, (name, cards)) in player_cards.iter().enumerate() {
+        for (name, uuid, cards) in player_data.iter() {
             players.push(Player {
                 name: name.clone(),
-                uuid: format!("temp-uuid-{}", i), // Temporary UUID for backwards compatibility
+                uuid: uuid.clone(),
                 cards: cards.clone(),
             });
-            starting_hands.insert(name.clone(), cards.clone());
+            starting_hands.insert(uuid.clone(), cards.clone()); // Key by UUID for internal use
         }
 
         // Find who has 3D (they go first)
@@ -171,23 +112,8 @@ impl Game {
         Ok(Self::new(id, players, 0, 0, vec![], starting_hands))
     }
 
-    /// Play cards by player name (for backwards compatibility)
+    /// Play cards by player UUID
     pub fn play_cards(&mut self, player_uuid: &str, cards: &[Card]) -> Result<bool, GameError> {
-        self.validate_player_turn(player_uuid)?;
-
-        if cards.is_empty() {
-            self.handle_pass()
-        } else {
-            self.handle_card_play(cards)
-        }
-    }
-
-    /// Play cards by player UUID (preferred method)
-    pub fn play_cards_by_uuid(
-        &mut self,
-        player_uuid: &str,
-        cards: &[Card],
-    ) -> Result<bool, GameError> {
         self.validate_player_turn(player_uuid)?;
 
         if cards.is_empty() {
@@ -229,7 +155,7 @@ impl Game {
         Ok(player_won)
     }
 
-    fn validate_card_play(&self, new_hand: &Hand, cards: &[Card]) -> Result<(), GameError> {
+    fn validate_card_play(&self, new_hand: &Hand, _cards: &[Card]) -> Result<(), GameError> {
         // Skip validation if 3 consecutive passes have occurred (table is clear)
         if self.consecutive_passes < 3 && !self.played_hands.is_empty() {
             if let Some(last_non_pass_hand) =
@@ -324,26 +250,17 @@ impl Game {
 
 mod tests {
     use super::*;
-    use crate::game::cards::{Hand, Rank, Suit};
-
-    fn create_player_starting_hands(
-        players: &[Player],
-    ) -> std::collections::HashMap<String, Vec<Card>> {
-        players
-            .iter()
-            .map(|player| (player.name.clone(), player.cards.clone()))
-            .collect()
-    }
+    use crate::game::cards::{Card, Hand, HandError, Rank, Suit};
 
     #[test]
     fn test_new_game() {
         let game = Game::new_game(
             "1".to_string(),
             &[
-                "alice-uuid".to_string(),
-                "bob-uuid".to_string(),
-                "charlie-uuid".to_string(),
-                "david-uuid".to_string(),
+                ("Alice".to_string(), "alice-uuid".to_string()),
+                ("Bob".to_string(), "bob-uuid".to_string()),
+                ("Charlie".to_string(), "charlie-uuid".to_string()),
+                ("David".to_string(), "david-uuid".to_string()),
             ],
         )
         .unwrap();
@@ -417,7 +334,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
@@ -457,7 +377,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         let cards_to_play = vec![Card::new(Rank::Three, Suit::Diamonds)];
@@ -495,7 +418,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice plays first card
@@ -545,7 +471,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![Hand::from_cards(&[Card::new(Rank::Five, Suit::Spades)]).unwrap()], // Someone played before
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice passes (empty cards vector)
@@ -587,7 +516,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play a card Alice doesn't have
@@ -628,7 +560,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play with Bob when it's Alice's turn
@@ -668,7 +603,10 @@ mod tests {
             0, // Alice's turn
             3, // 3 consecutive passes already
             vec![Hand::Pass, Hand::Pass, Hand::Pass],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to pass when 3 consecutive passes already occurred
@@ -703,7 +641,10 @@ mod tests {
             vec![Hand::Single(crate::game::cards::SingleHand::new(
                 Card::new(Rank::King, Suit::Hearts),
             ))], // Previous player played King of Hearts
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play a weaker card (3D) when King was played
@@ -736,7 +677,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play a card Alice doesn't have (Ace of Spades)
@@ -779,7 +723,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play an invalid pair (different ranks)
@@ -833,7 +780,10 @@ mod tests {
                 Hand::Pass,
                 Hand::Pass,
             ],
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice passes (making it 3 consecutive passes)
@@ -852,10 +802,10 @@ mod tests {
         let game = Game::new_game(
             "1".to_string(),
             &[
-                "Alice".to_string(),
-                "Bob".to_string(),
-                "Charlie".to_string(),
-                "David".to_string(),
+                ("Alice".to_string(), "alice-uuid".to_string()),
+                ("Bob".to_string(), "bob-uuid".to_string()),
+                ("Charlie".to_string(), "charlie-uuid".to_string()),
+                ("David".to_string(), "david-uuid".to_string()),
             ],
         )
         .unwrap();
@@ -863,24 +813,24 @@ mod tests {
         // Verify starting hands were captured for all players
         let starting_hands = game.starting_hands();
         assert_eq!(starting_hands.len(), 4);
-        assert!(starting_hands.contains_key("Alice"));
-        assert!(starting_hands.contains_key("Bob"));
-        assert!(starting_hands.contains_key("Charlie"));
-        assert!(starting_hands.contains_key("David"));
+        assert!(starting_hands.contains_key("alice-uuid"));
+        assert!(starting_hands.contains_key("bob-uuid"));
+        assert!(starting_hands.contains_key("charlie-uuid"));
+        assert!(starting_hands.contains_key("david-uuid"));
 
         // Each player should have 13 starting cards
-        for (player_name, cards) in starting_hands {
+        for (player_uuid, cards) in starting_hands {
             assert_eq!(
                 cards.len(),
                 13,
                 "Player {} should have 13 starting cards",
-                player_name
+                player_uuid
             );
         }
 
         // Starting hands should match the sorted cards each player received
         for player in game.players() {
-            let starting_cards = starting_hands.get(&player.name).unwrap();
+            let starting_cards = starting_hands.get(&player.uuid).unwrap();
             // The current cards might be different due to the rotation, but starting hands preserve original distribution
             assert_eq!(starting_cards.len(), 13);
         }
@@ -910,7 +860,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Try to play without 3 of diamonds - should fail
@@ -946,7 +899,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Play with 3 of diamonds - should succeed
@@ -981,7 +937,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Play a pair that includes 3 of diamonds - should succeed
@@ -1021,7 +980,10 @@ mod tests {
             0, // Alice's turn
             0,
             vec![], // No hands played yet - first turn
-            create_player_starting_hands(&players),
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
         );
 
         // Alice plays 3 of diamonds successfully

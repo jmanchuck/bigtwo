@@ -49,17 +49,35 @@ impl TestSetupBuilder {
 
     pub fn with_two_players(self) -> Self {
         self.with_players(vec![
-            ("alice-uuid".to_string(), "alice".to_string()),
-            ("bob-uuid".to_string(), "bob".to_string()),
+            (
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                "alice".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                "bob".to_string(),
+            ),
         ])
     }
 
     pub fn with_four_players(self) -> Self {
         self.with_players(vec![
-            ("alice-uuid".to_string(), "alice".to_string()),
-            ("bob-uuid".to_string(), "bob".to_string()),
-            ("charlie-uuid".to_string(), "charlie".to_string()),
-            ("david-uuid".to_string(), "david".to_string()),
+            (
+                "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                "alice".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                "bob".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440002".to_string(),
+                "charlie".to_string(),
+            ),
+            (
+                "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                "david".to_string(),
+            ),
         ])
     }
 
@@ -67,8 +85,8 @@ impl TestSetupBuilder {
         let event_bus = EventBus::new();
         let repo = Arc::new(InMemoryRoomRepository::new());
         let mock_conn_manager = Arc::new(MockConnectionManager::new());
-        let game_service = Arc::new(GameService::new());
         let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping.clone()));
 
         // Create room
         let room = RoomModel {
@@ -88,6 +106,15 @@ impl TestSetupBuilder {
         // messages addressed by name get recorded under the UUID key
         for (uuid, name) in &self.players {
             mock_conn_manager.register_player_mapping(name, uuid).await;
+        }
+
+        // Register UUID -> playername mapping in the actual player mapping service
+        // so GameService can resolve names during game creation
+        for (uuid, name) in &self.players {
+            player_mapping
+                .register_player(uuid.clone(), name.clone())
+                .await
+                .expect("failed to register player mapping");
         }
 
         let input_handler = WebsocketReceiveHandler::new(event_bus.clone());

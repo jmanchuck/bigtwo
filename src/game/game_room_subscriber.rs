@@ -7,6 +7,7 @@ use tracing::info;
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
     game::{cards::Card, service::GameService},
+    user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService},
 };
 
 pub struct GameEventRoomSubscriber {
@@ -234,7 +235,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_game_room_subscriber_new() {
-        let game_service = Arc::new(GameService::new());
+        let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping));
         let event_bus = EventBus::new();
 
         let subscriber = GameEventRoomSubscriber::new(game_service, event_bus);
@@ -243,16 +245,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_create_game() {
-        let game_service = Arc::new(GameService::new());
+        let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping.clone()));
         let event_bus = EventBus::new();
         let subscriber = GameEventRoomSubscriber::new(game_service.clone(), event_bus);
 
         let players = vec![
-            "Alice".to_string(),
-            "Bob".to_string(),
-            "Charlie".to_string(),
-            "David".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            "550e8400-e29b-41d4-a716-446655440001".to_string(),
+            "550e8400-e29b-41d4-a716-446655440002".to_string(),
+            "550e8400-e29b-41d4-a716-446655440003".to_string(),
         ];
+
+        // Register players in the mapping service
+        for (i, uuid) in players.iter().enumerate() {
+            player_mapping
+                .register_player(uuid.clone(), format!("Player{}", i + 1))
+                .await
+                .unwrap();
+        }
 
         let result = subscriber.handle_create_game("test_room", &players).await;
         assert!(result.is_ok());
@@ -263,24 +274,34 @@ mod tests {
 
         let game = game.unwrap();
         assert_eq!(game.players().len(), 4);
-        // Note: We can't assert current_player_turn() == "Alice" because new_game()
+        // Note: We can't assert current_player_turn() == "alice-uuid" because new_game()
         // rotates players based on who has 3D, which is random
-        assert!(game.players().iter().any(|p| p.name == "Alice"));
+        assert!(game.players().iter().any(|p| p.name == "Player1"));
     }
 
     #[tokio::test]
     async fn test_handle_player_played_move_success() {
-        let game_service = Arc::new(GameService::new());
+        let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping.clone()));
         let event_bus = EventBus::new();
         let subscriber = GameEventRoomSubscriber::new(game_service.clone(), event_bus);
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "alice-uuid".to_string(),
-            "bob-uuid".to_string(),
-            "charlie-uuid".to_string(),
-            "david-uuid".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            "550e8400-e29b-41d4-a716-446655440001".to_string(),
+            "550e8400-e29b-41d4-a716-446655440002".to_string(),
+            "550e8400-e29b-41d4-a716-446655440003".to_string(),
         ];
+
+        // Register players in the mapping service
+        for (i, uuid) in players.iter().enumerate() {
+            player_mapping
+                .register_player(uuid.clone(), format!("Player{}", i + 1))
+                .await
+                .unwrap();
+        }
+
         game_service
             .create_game("test_room", &players)
             .await
@@ -307,7 +328,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_player_played_move_game_not_found() {
-        let game_service = Arc::new(GameService::new());
+        let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping.clone()));
         let event_bus = EventBus::new();
         let subscriber = GameEventRoomSubscriber::new(game_service, event_bus);
 
@@ -324,17 +346,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_player_played_move_wrong_turn() {
-        let game_service = Arc::new(GameService::new());
+        let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
+        let game_service = Arc::new(GameService::new(player_mapping.clone()));
         let event_bus = EventBus::new();
         let subscriber = GameEventRoomSubscriber::new(game_service.clone(), event_bus);
 
         // Create a game with 4 players (Big Two requirement)
         let players = vec![
-            "alice-uuid".to_string(),
-            "bob-uuid".to_string(),
-            "charlie-uuid".to_string(),
-            "david-uuid".to_string(),
+            "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            "550e8400-e29b-41d4-a716-446655440001".to_string(),
+            "550e8400-e29b-41d4-a716-446655440002".to_string(),
+            "550e8400-e29b-41d4-a716-446655440003".to_string(),
         ];
+
+        // Register players in the mapping service
+        for (i, uuid) in players.iter().enumerate() {
+            player_mapping
+                .register_player(uuid.clone(), format!("Player{}", i + 1))
+                .await
+                .unwrap();
+        }
+
         game_service
             .create_game("test_room", &players)
             .await

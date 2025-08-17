@@ -12,7 +12,9 @@ use utils::*;
 async fn test_game_start_requires_host_and_four_players() {
     let setup = TestSetupBuilder::new().with_four_players().build().await;
 
-    setup.send_start_game("alice-uuid").await; // alice is host
+    setup
+        .send_start_game("550e8400-e29b-41d4-a716-446655440000")
+        .await; // alice is host
 
     MessageAssertion::for_all_players(&setup)
         .received_message_type(MessageType::GameStarted)
@@ -24,7 +26,9 @@ async fn test_game_start_requires_host_and_four_players() {
 async fn test_non_host_cannot_start_game() {
     let setup = TestSetupBuilder::new().with_four_players().build().await;
 
-    setup.send_start_game("bob-uuid").await; // bob is not host
+    setup
+        .send_start_game("550e8400-e29b-41d4-a716-446655440001")
+        .await; // bob is not host
 
     MessageAssertion::for_all_players(&setup)
         .received_no_messages()
@@ -35,7 +39,9 @@ async fn test_non_host_cannot_start_game() {
 async fn test_insufficient_players_cannot_start_game() {
     let setup = TestSetupBuilder::new().with_two_players().build().await;
 
-    setup.send_start_game("alice-uuid").await;
+    setup
+        .send_start_game("550e8400-e29b-41d4-a716-446655440000")
+        .await;
 
     MessageAssertion::for_all_players(&setup)
         .received_no_messages()
@@ -48,7 +54,7 @@ async fn test_turn_progression_after_move() {
     let first_player = GameBuilder::new()
         .with_cards(vec![
             (
-                "alice-uuid",
+                "alice",
                 vec![
                     Card::new(Rank::Three, Suit::Diamonds), // Alice has 3D, goes first
                     Card::new(Rank::Five, Suit::Hearts),
@@ -58,7 +64,7 @@ async fn test_turn_progression_after_move() {
                 ],
             ),
             (
-                "bob-uuid",
+                "bob",
                 vec![
                     Card::new(Rank::Four, Suit::Clubs),
                     Card::new(Rank::Six, Suit::Diamonds),
@@ -66,7 +72,7 @@ async fn test_turn_progression_after_move() {
                 ],
             ),
             (
-                "charlie-uuid",
+                "charlie",
                 vec![
                     Card::new(Rank::Seven, Suit::Spades),
                     Card::new(Rank::Ten, Suit::Clubs),
@@ -74,7 +80,7 @@ async fn test_turn_progression_after_move() {
                 ],
             ),
             (
-                "david-uuid",
+                "david",
                 vec![
                     Card::new(Rank::King, Suit::Hearts),
                     Card::new(Rank::Ace, Suit::Spades),
@@ -202,7 +208,7 @@ async fn test_player_join_event_notifies_existing_players() {
 
     setup
         .emit_event(RoomEvent::PlayerJoined {
-            player: "charlie-uuid".to_string(),
+            player: "550e8400-e29b-41d4-a716-446655440002".to_string(),
         })
         .await;
 

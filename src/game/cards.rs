@@ -700,14 +700,26 @@ impl Hand {
     }
 }
 
+/// Compare two sets of played cards to determine if the first can beat the second
+/// Returns Ok(true) if played_cards can beat current_cards, Ok(false) otherwise
+/// Empty played_cards represents a pass
 pub fn compare_played_cards(
     played_cards: &[Card],
-    previous_cards: &[Card],
+    current_cards: &[Card],
 ) -> Result<bool, HandError> {
-    let played_hand = Hand::from_cards(played_cards)?;
-    let previous_hand = Hand::from_cards(previous_cards)?;
+    let played_hand = if played_cards.is_empty() {
+        Hand::Pass
+    } else {
+        Hand::from_cards(played_cards)?
+    };
 
-    Ok(played_hand.can_beat(&previous_hand))
+    let current_hand = if current_cards.is_empty() {
+        Hand::Pass
+    } else {
+        Hand::from_cards(current_cards)?
+    };
+
+    Ok(played_hand.can_beat(&current_hand))
 }
 
 #[cfg(test)]

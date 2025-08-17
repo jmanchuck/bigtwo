@@ -273,7 +273,7 @@ pub mod test_utils {
 
             let game_service = self
                 .game_service
-                .unwrap_or_else(|| Arc::new(GameService::new()));
+                .unwrap_or_else(|| Arc::new(GameService::new(player_mapping.clone())));
 
             AppState {
                 session_repository,
