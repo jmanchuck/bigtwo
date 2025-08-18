@@ -128,11 +128,6 @@ impl AppStateBuilder {
 
     /// Build AppState with validation
     pub fn build(self) -> Result<AppState, AppStateBuilderError> {
-        let session_repository =
-            self.session_repository
-                .ok_or(AppStateBuilderError::MissingDependency(
-                    "session_repository",
-                ))?;
         let player_mapping = self
             .player_mapping
             .ok_or(AppStateBuilderError::MissingDependency("player_mapping"))?;
