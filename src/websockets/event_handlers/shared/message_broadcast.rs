@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use crate::{
     event::RoomEventError,
-    websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage}
+    websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
+use std::sync::Arc;
 
 pub struct MessageBroadcaster;
 

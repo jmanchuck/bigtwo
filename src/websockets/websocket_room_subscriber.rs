@@ -3,20 +3,20 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
-    game::{Card, Game, GameService},
+    event::{RoomEvent, RoomEventError, RoomEventHandler},
+    game::GameService,
     room::service::RoomService,
     user::PlayerMappingService,
     websockets::connection_manager::ConnectionManager,
 };
 
-use handlers::{ChatEventHandlers, ConnectionEventHandlers, GameEventHandlers, RoomEventHandlers};
-
-mod handlers;
+use super::event_handlers::{
+    ChatEventHandlers, ConnectionEventHandlers, GameEventHandlers, RoomEventHandlers,
+};
 
 /// WebSocket-specific room event handler
 ///
-/// Handles room events by delegating to specialized handlers:
+/// Handles room events by delegating to specialized event handlers:
 /// - RoomEventHandlers: PlayerJoined, PlayerLeft, HostChanged
 /// - ChatEventHandlers: ChatMessage
 /// - GameEventHandlers: StartGame, MovePlayed, TurnChanged, GameWon, GameReset
@@ -46,7 +46,9 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                 self.room_handlers.handle_player_joined(room_id).await
             }
             RoomEvent::PlayerLeft { player } => {
-                self.room_handlers.handle_player_left(room_id, &player).await
+                self.room_handlers
+                    .handle_player_left(room_id, &player)
+                    .await
             }
             RoomEvent::HostChanged { old_host, new_host } => {
                 self.room_handlers
@@ -124,10 +126,8 @@ impl WebSocketRoomSubscriber {
             Arc::clone(&player_mapping),
         );
 
-        let chat_handlers = ChatEventHandlers::new(
-            Arc::clone(&room_service),
-            Arc::clone(&connection_manager),
-        );
+        let chat_handlers =
+            ChatEventHandlers::new(Arc::clone(&room_service), Arc::clone(&connection_manager));
 
         let game_handlers = GameEventHandlers::new(
             Arc::clone(&room_service),

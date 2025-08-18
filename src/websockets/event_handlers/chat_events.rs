@@ -50,7 +50,8 @@ impl ChatEventHandlers {
             &self.connection_manager,
             room.get_player_uuids(),
             &chat_message,
-        ).await?;
+        )
+        .await?;
 
         Ok(())
     }

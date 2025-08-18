@@ -1,5 +1,5 @@
-use std::{collections::HashMap, sync::Arc};
 use crate::user::PlayerMappingService;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct PlayerMappingUtils;
 

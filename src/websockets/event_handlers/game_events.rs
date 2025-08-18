@@ -2,10 +2,10 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::{
+    event::RoomSubscription,
     event::{EventBus, RoomEvent, RoomEventError},
     game::{Card, Game, GameEventRoomSubscriber, GameService},
     room::service::RoomService,
-    event::RoomSubscription,
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
@@ -63,7 +63,11 @@ impl GameEventHandlers {
         Ok(())
     }
 
-    pub async fn handle_try_start_game(&self, room_id: &str, host: &str) -> Result<(), RoomEventError> {
+    pub async fn handle_try_start_game(
+        &self,
+        room_id: &str,
+        host: &str,
+    ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
             host = %host,
@@ -136,25 +140,31 @@ impl GameEventHandlers {
             &self.connection_manager,
             &player_uuids,
             &player_message,
-        ).await?;
+        )
+        .await?;
 
         Ok(())
     }
 
-    pub async fn handle_turn_changed(&self, room_id: &str, player: &str) -> Result<(), RoomEventError> {
+    pub async fn handle_turn_changed(
+        &self,
+        room_id: &str,
+        player: &str,
+    ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
             player = %player,
             "Handling turn changed event"
         );
 
-        let game = self.game_service
-            .get_game(room_id)
-            .await
-            .ok_or(RoomEventError::HandlerError(format!(
-                "Game not found for room: {}",
-                room_id
-            )))?;
+        let game =
+            self.game_service
+                .get_game(room_id)
+                .await
+                .ok_or(RoomEventError::HandlerError(format!(
+                    "Game not found for room: {}",
+                    room_id
+                )))?;
 
         let turn_change_message = WebSocketMessage::turn_change(player.to_string());
         let player_uuids: Vec<String> = game.players().iter().map(|p| p.uuid.clone()).collect();
@@ -162,7 +172,8 @@ impl GameEventHandlers {
             &self.connection_manager,
             &player_uuids,
             &turn_change_message,
-        ).await?;
+        )
+        .await?;
 
         info!(
             room_id = %room_id,
@@ -181,13 +192,14 @@ impl GameEventHandlers {
             "Handling game won event"
         );
 
-        let game = self.game_service
-            .get_game(room_id)
-            .await
-            .ok_or(RoomEventError::HandlerError(format!(
-                "Game not found for room: {}",
-                room_id
-            )))?;
+        let game =
+            self.game_service
+                .get_game(room_id)
+                .await
+                .ok_or(RoomEventError::HandlerError(format!(
+                    "Game not found for room: {}",
+                    room_id
+                )))?;
 
         let game_won_message = WebSocketMessage::game_won(winner.to_string());
         let player_uuids: Vec<String> = game.players().iter().map(|p| p.uuid.clone()).collect();
@@ -195,7 +207,8 @@ impl GameEventHandlers {
             &self.connection_manager,
             &player_uuids,
             &game_won_message,
-        ).await?;
+        )
+        .await?;
 
         info!(
             room_id = %room_id,
@@ -226,7 +239,8 @@ impl GameEventHandlers {
             &self.connection_manager,
             room.get_player_uuids(),
             &game_reset_message,
-        ).await?;
+        )
+        .await?;
 
         info!(
             room_id = %room_id,

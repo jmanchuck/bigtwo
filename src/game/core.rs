@@ -250,7 +250,6 @@ impl Game {
 
 mod tests {
     use super::*;
-    use crate::game::cards::{Card, Hand, HandError, Rank, Suit};
 
     #[test]
     fn test_new_game() {

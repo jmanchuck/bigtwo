@@ -37,7 +37,8 @@ impl RoomEventHandlers {
         let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
             &self.player_mapping,
             room.get_player_uuids(),
-        ).await;
+        )
+        .await;
 
         let ws_message = WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
 
@@ -45,7 +46,8 @@ impl RoomEventHandlers {
             &self.connection_manager,
             room.get_player_uuids(),
             &ws_message,
-        ).await?;
+        )
+        .await?;
 
         debug!(
             room_id = %room_id,
@@ -56,7 +58,11 @@ impl RoomEventHandlers {
         Ok(())
     }
 
-    pub async fn handle_player_left(&self, room_id: &str, uuid: &str) -> Result<(), RoomEventError> {
+    pub async fn handle_player_left(
+        &self,
+        room_id: &str,
+        uuid: &str,
+    ) -> Result<(), RoomEventError> {
         debug!(
             room_id = %room_id,
             uuid = %uuid,
@@ -80,19 +86,23 @@ impl RoomEventHandlers {
             &self.connection_manager,
             room.get_player_uuids(),
             &leave_message,
-        ).await?;
+        )
+        .await?;
 
         let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
             &self.player_mapping,
             room.get_player_uuids(),
-        ).await;
+        )
+        .await;
 
-        let players_list_message = WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
             &players_list_message,
-        ).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -118,16 +128,18 @@ impl RoomEventHandlers {
             }
         };
 
-        let new_host_name = PlayerMappingUtils::get_player_name(&self.player_mapping, new_host_uuid)
-            .await
-            .unwrap_or_else(|| new_host_uuid.to_string());
+        let new_host_name =
+            PlayerMappingUtils::get_player_name(&self.player_mapping, new_host_uuid)
+                .await
+                .unwrap_or_else(|| new_host_uuid.to_string());
 
         let host_change_message = WebSocketMessage::host_change(new_host_name);
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
             &host_change_message,
-        ).await?;
+        )
+        .await?;
 
         info!(
             room_id = %room_id,
