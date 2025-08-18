@@ -6,6 +6,7 @@ use super::types::SessionClaims;
 use crate::shared::AppError;
 
 /// Configuration for JWT token operations
+#[derive(Clone)]
 pub struct TokenConfig {
     secret: String,
     pub expiration_days: i64,
