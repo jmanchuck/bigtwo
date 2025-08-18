@@ -7,10 +7,9 @@ use tracing::{info, instrument};
 
 use super::types::{CreateRoomApiRequest, JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
-    event::{RoomEvent, RoomSubscription},
+    event::RoomEvent,
     session::SessionClaims,
     shared::{AppError, AppState},
-    websockets::WebSocketRoomSubscriber,
 };
 
 /// HTTP handler for creating a new room
@@ -36,9 +35,9 @@ pub async fn create_room(
     // Create request using authenticated session's UUID
     let request = RoomCreateRequest { host_uuid };
 
-    // Use injected service from app state
+    // Use injected service from app state - now with subscription setup included
     let service = Arc::clone(&state.room_service);
-    let room_model = service.create_room(request).await?;
+    let room_model = service.create_room_with_subscription(request).await?;
     // Map host UUID to display name for response
     let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
     let host_name = state
@@ -52,25 +51,6 @@ pub async fn create_room(
         status: room_model.status.clone(),
         player_count: room_model.get_player_count(),
     };
-
-    // Start WebSocket room subscription for this room
-    let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
-        Arc::clone(&state.room_service),
-        Arc::clone(&state.connection_manager),
-        Arc::clone(&state.game_service),
-        Arc::clone(&state.player_mapping),
-        state.event_bus.clone(),
-    ));
-
-    let room_subscription =
-        RoomSubscription::new(room.id.clone(), room_subscriber, state.event_bus.clone());
-
-    // Start the subscription background task
-    let _subscription_handle = room_subscription.start().await;
-
-    // Note: We're not storing the handle because the task will run until the room is deleted
-    // and there are no more events. In a production system, you might want to store handles
-    // for cleanup, but for this implementation, letting them run independently is fine.
 
     info!(
         room_id = %room.id,

@@ -70,10 +70,17 @@ async fn main() {
         player_mapping.clone(),
     ));
     let room_repository = Arc::new(InMemoryRoomRepository::new());
-    let room_service = Arc::new(RoomService::new(room_repository));
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
     let game_service = Arc::new(GameService::new(player_mapping.clone()));
+    // Create RoomService with subscription support
+    let room_service = Arc::new(RoomService::new_with_subscription_deps(
+        room_repository,
+        connection_manager.clone(),
+        game_service.clone(),
+        player_mapping.clone(),
+        event_bus.clone(),
+    ));
 
     let app_state = AppState::builder()
         .with_session_repository(session_repository)

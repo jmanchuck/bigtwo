@@ -106,6 +106,7 @@ impl AppStateBuilder {
         self
     }
 
+
     pub fn with_connection_manager(mut self, manager: Arc<dyn ConnectionManager>) -> Self {
         self.connection_manager = Some(manager);
         self
@@ -134,9 +135,6 @@ impl AppStateBuilder {
         let session_service = self
             .session_service
             .ok_or_else(|| AppStateBuilderError::MissingDependency("session_service"))?;
-        let room_service = self
-            .room_service
-            .ok_or(AppStateBuilderError::MissingDependency("room_service"))?;
         let event_bus = self.event_bus.unwrap_or_else(|| EventBus::new());
         let connection_manager =
             self.connection_manager
@@ -146,6 +144,13 @@ impl AppStateBuilder {
         let game_service = self
             .game_service
             .ok_or(AppStateBuilderError::MissingDependency("game_service"))?;
+
+        // If room_service is provided, use it; otherwise create one with subscription dependencies
+        let room_service = if let Some(room_service) = self.room_service {
+            room_service
+        } else {
+            return Err(AppStateBuilderError::MissingDependency("room_service"));
+        };
 
         Ok(AppState {
             session_service,
