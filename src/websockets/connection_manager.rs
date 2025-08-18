@@ -73,3 +73,76 @@ impl ConnectionManager for InMemoryConnectionManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::{timeout, Duration};
+
+    #[tokio::test]
+    async fn test_add_and_send_to_single_player() {
+        let manager = InMemoryConnectionManager::new();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        manager.add_connection("u1".to_string(), tx).await;
+
+        manager.send_to_player("u1", "hello").await;
+        let got = rx.recv().await.unwrap();
+        assert_eq!(got, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_send_to_multiple_players() {
+        let manager = InMemoryConnectionManager::new();
+
+        let (tx1, mut rx1) = mpsc::unbounded_channel::<String>();
+        let (tx2, mut rx2) = mpsc::unbounded_channel::<String>();
+        manager.add_connection("u1".to_string(), tx1).await;
+        manager.add_connection("u2".to_string(), tx2).await;
+
+        manager
+            .send_to_players(&vec!["u1".to_string(), "u2".to_string()], "msg")
+            .await;
+
+        let a = rx1.recv().await.unwrap();
+        let b = rx2.recv().await.unwrap();
+        assert_eq!(a, "msg");
+        assert_eq!(b, "msg");
+    }
+
+    #[tokio::test]
+    async fn test_remove_connection() {
+        let manager = InMemoryConnectionManager::new();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        manager.add_connection("u1".to_string(), tx).await;
+
+        manager.remove_connection("u1").await;
+        manager.send_to_player("u1", "nope").await;
+
+        // Channel should be closed; recv returns None
+        let res = rx.recv().await;
+        assert!(res.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_replace_existing_connection_uses_new_sender() {
+        let manager = InMemoryConnectionManager::new();
+
+        let (tx_old, mut rx_old) = mpsc::unbounded_channel::<String>();
+        manager.add_connection("u1".to_string(), tx_old).await;
+
+        let (tx_new, mut rx_new) = mpsc::unbounded_channel::<String>();
+        manager.add_connection("u1".to_string(), tx_new).await; // replace
+
+        manager.send_to_player("u1", "only-new").await;
+
+        // Old channel should be closed
+        let res_old = rx_old.recv().await;
+        assert!(res_old.is_none());
+
+        // New should receive
+        let got = rx_new.recv().await.unwrap();
+        assert_eq!(got, "only-new");
+    }
+}

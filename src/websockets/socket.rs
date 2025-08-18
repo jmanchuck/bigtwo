@@ -120,3 +120,110 @@ impl Connection {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct TestSocket {
+        sent: Arc<Mutex<Vec<String>>>,
+        inbound: mpsc::UnboundedReceiver<String>,
+    }
+
+    #[async_trait]
+    impl SocketWrapper for TestSocket {
+        async fn send_message(&mut self, message: String) -> Result<(), SocketError> {
+            self.sent.lock().unwrap().push(message);
+            Ok(())
+        }
+
+        async fn receive_message(&mut self) -> Result<Option<String>, SocketError> {
+            Ok(self.inbound.recv().await)
+        }
+
+        async fn close(&mut self) -> Result<(), SocketError> {
+            Ok(())
+        }
+    }
+
+    struct TestHandler {
+        calls: Arc<Mutex<Vec<(String, String, String)>>>,
+    }
+
+    #[async_trait]
+    impl MessageHandler for TestHandler {
+        async fn handle_message(&self, username: &str, room_id: &str, message: String) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((username.to_string(), room_id.to_string(), message));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_connection_sends_outbound_and_handles_inbound() {
+        let (out_tx, out_rx) = mpsc::unbounded_channel::<String>();
+
+        let (in_tx, in_rx) = mpsc::unbounded_channel::<String>();
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let socket = TestSocket {
+            sent: sent.clone(),
+            inbound: in_rx,
+        };
+
+        let handler_calls = Arc::new(Mutex::new(Vec::new()));
+        let handler = Arc::new(TestHandler {
+            calls: handler_calls.clone(),
+        });
+
+        let conn = Connection::new(
+            "user1".to_string(),
+            "roomA".to_string(),
+            Box::new(socket),
+            out_rx,
+            handler,
+        );
+
+        let join = tokio::spawn(conn.run());
+
+        // Give the connection task a moment to start
+        tokio::task::yield_now().await;
+
+        // Send outbound to client
+        out_tx.send("hello-out".to_string()).unwrap();
+
+        // Send inbound from client
+        in_tx.send("hello-in".to_string()).unwrap();
+
+        // Wait until outbound has been sent and inbound handled
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(50), async {
+            loop {
+                let sent_len = { sent.lock().unwrap().len() };
+                let calls_len = { handler_calls.lock().unwrap().len() };
+                if sent_len >= 1 && calls_len >= 1 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+
+        // Close both sides after processing
+        drop(out_tx);
+        drop(in_tx);
+
+        let _ = join.await.unwrap().unwrap();
+
+        // Assert outbound was sent to socket
+        let sent_vec = sent.lock().unwrap().clone();
+        assert!(sent_vec.contains(&"hello-out".to_string()));
+
+        // Assert handler was called with inbound
+        let calls = handler_calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, "user1");
+        assert_eq!(calls[0].1, "roomA");
+        assert_eq!(calls[0].2, "hello-in");
+    }
+}

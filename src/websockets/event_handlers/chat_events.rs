@@ -56,3 +56,57 @@ impl ChatEventHandlers {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::room::{
+        models::RoomModel, repository::InMemoryRoomRepository, repository::RoomRepository,
+    };
+
+    struct CollectingConnMgr(std::sync::Mutex<Vec<(String, String)>>);
+
+    #[async_trait::async_trait]
+    impl ConnectionManager for CollectingConnMgr {
+        async fn add_connection(&self, _uuid: String, _sender: mpsc::UnboundedSender<String>) {}
+        async fn remove_connection(&self, _uuid: &str) {}
+        async fn send_to_player(&self, uuid: &str, message: &str) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((uuid.to_string(), message.to_string()));
+        }
+        async fn send_to_players(&self, uuids: &[String], message: &str) {
+            for u in uuids {
+                self.send_to_player(u, message).await;
+            }
+        }
+    }
+
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_handle_chat_message_broadcasts_to_room_players() {
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let room = RoomModel {
+            id: "r1".into(),
+            host_uuid: Some("h".into()),
+            status: "ONLINE".into(),
+            player_uuids: vec!["a".into(), "b".into()],
+        };
+        repo.create_room(&room).await.unwrap();
+        let room_service = Arc::new(RoomService::new(repo));
+
+        let mgr_concrete = Arc::new(CollectingConnMgr(std::sync::Mutex::new(vec![])));
+        let mgr: Arc<dyn ConnectionManager> = mgr_concrete.clone();
+        let handler = ChatEventHandlers::new(room_service, mgr.clone());
+
+        handler.handle_chat_message("r1", "a", "hi").await.unwrap();
+
+        let sent = mgr_concrete.0.lock().unwrap().clone();
+
+        assert_eq!(sent.len(), 2);
+        assert!(sent.iter().any(|(u, _)| u == "a"));
+        assert!(sent.iter().any(|(u, _)| u == "b"));
+    }
+}

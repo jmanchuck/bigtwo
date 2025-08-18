@@ -207,3 +207,60 @@ impl WebSocketMessage {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_constructors_and_serialization() {
+        // players_list
+        let mut map = std::collections::HashMap::new();
+        map.insert("u1".to_string(), "Alice".to_string());
+        let m = WebSocketMessage::players_list(vec!["u1".to_string()], map.clone());
+        assert!(matches!(m.message_type, MessageType::PlayersList));
+        let s = serde_json::to_string(&m).unwrap();
+        let back: WebSocketMessage = serde_json::from_str(&s).unwrap();
+        assert!(matches!(back.message_type, MessageType::PlayersList));
+
+        // error
+        let e = WebSocketMessage::error("oops".to_string());
+        assert!(matches!(e.message_type, MessageType::Error));
+
+        // host_change
+        let h = WebSocketMessage::host_change("u1".to_string());
+        assert!(matches!(h.message_type, MessageType::HostChange));
+
+        // game_started
+        let gs = WebSocketMessage::game_started(
+            "u1".to_string(),
+            vec!["3D".to_string()],
+            vec!["u1".to_string()],
+        );
+        assert!(matches!(gs.message_type, MessageType::GameStarted));
+
+        // move_played
+        let mp = WebSocketMessage::move_played("u1".to_string(), vec!["3D".to_string()]);
+        assert!(matches!(mp.message_type, MessageType::MovePlayed));
+
+        // chat
+        let c = WebSocketMessage::chat("u1".to_string(), "hi".to_string());
+        assert!(matches!(c.message_type, MessageType::Chat));
+
+        // leave
+        let l = WebSocketMessage::leave("u1".to_string());
+        assert!(matches!(l.message_type, MessageType::Leave));
+
+        // turn_change
+        let t = WebSocketMessage::turn_change("u2".to_string());
+        assert!(matches!(t.message_type, MessageType::TurnChange));
+
+        // game_won
+        let gw = WebSocketMessage::game_won("u3".to_string());
+        assert!(matches!(gw.message_type, MessageType::GameWon));
+
+        // game_reset
+        let gr = WebSocketMessage::game_reset();
+        assert!(matches!(gr.message_type, MessageType::GameReset));
+    }
+}
