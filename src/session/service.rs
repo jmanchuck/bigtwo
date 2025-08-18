@@ -4,6 +4,8 @@ use tokio::sync::RwLock;
 use tracing::{info, instrument, warn};
 
 use super::{
+    creator::{SessionCreationConfig, SessionCreator},
+    generators::{DefaultUuidGenerator, PetNameUsernameGenerator},
     models::SessionModel,
     repository::SessionRepository,
     token::TokenConfig,
@@ -13,6 +15,7 @@ use crate::{shared::AppError, user::PlayerMappingService};
 
 /// Service for handling session business logic
 pub struct SessionService {
+    session_creator: SessionCreator,
     token_config: TokenConfig,
     repository: Arc<dyn SessionRepository + Send + Sync>,
     player_mapping: Arc<dyn PlayerMappingService>,
@@ -24,65 +27,44 @@ impl SessionService {
         repository: Arc<dyn SessionRepository + Send + Sync>,
         player_mapping: Arc<dyn PlayerMappingService>,
     ) -> Self {
+        let token_config = TokenConfig::new();
+        let session_to_player_uuid = Arc::new(RwLock::new(HashMap::new()));
+
+        // Create session creator with default generators
+        let session_creator = SessionCreator::new(
+            Arc::new(DefaultUuidGenerator::new()),
+            Arc::new(PetNameUsernameGenerator::new()),
+            repository.clone(),
+            player_mapping.clone(),
+            session_to_player_uuid.clone(),
+            token_config.clone(),
+            SessionCreationConfig::default(),
+        );
+
         Self {
-            token_config: TokenConfig::new(),
+            session_creator,
+            token_config,
             repository,
             player_mapping,
-            session_to_player_uuid: Arc::new(RwLock::new(HashMap::new())),
+            session_to_player_uuid,
         }
     }
 
     /// Creates a new session with a generated username and JWT token
     #[instrument(skip(self))]
     pub async fn create_session(&self) -> Result<SessionResponse, AppError> {
-        let username = self.generate_username();
-        info!(username = %username, "Creating session with username");
+        info!("Starting session creation");
 
-        // Generate player UUID for internal identification
-        let player_uuid =
-            crate::user::mapping_service::InMemoryPlayerMappingService::generate_uuid();
-        info!(player_uuid = %player_uuid, "Generated player UUID");
-
-        // Create session model for database
-        let session_model = SessionModel::new(username.clone(), self.token_config.expiration_days);
-        info!(session_id = %session_model.id, "Generated session ID");
-
-        // Store session in database
-        self.repository.create_session(&session_model).await?;
-
-        // Register player UUID → playername mapping
-        self.player_mapping
-            .register_player(player_uuid.clone(), username.clone())
-            .await
-            .map_err(|_e| AppError::Internal)?;
-        info!(
-            player_uuid = %player_uuid,
-            username = %username,
-            "Player mapping registered successfully"
-        );
-
-        // Store session_id → player_uuid mapping
-        {
-            let mut session_uuid_map = self.session_to_player_uuid.write().await;
-            session_uuid_map.insert(session_model.id.clone(), player_uuid.clone());
+        match self.session_creator.create_session().await {
+            Ok(creation_result) => {
+                info!("Session creation completed successfully");
+                Ok(creation_result.session_response)
+            }
+            Err(error) => {
+                warn!("Session creation failed: {:?}", error);
+                Err(error)
+            }
         }
-        info!(
-            session_id = %session_model.id,
-            player_uuid = %player_uuid,
-            "Session to player UUID mapping stored"
-        );
-
-        // Create JWT token with session ID
-        let token = self
-            .token_config
-            .create_token(session_model.id, username.clone())?;
-        info!(username = %username, "JWT token created successfully");
-
-        Ok(SessionResponse {
-            session_id: token,
-            username,
-            player_uuid,
-        })
     }
 
     /// Validates a session token and returns the claims if valid
@@ -217,11 +199,6 @@ impl SessionService {
     #[instrument(skip(self))]
     pub async fn get_playername_by_uuid(&self, player_uuid: &str) -> Option<String> {
         self.player_mapping.get_playername(player_uuid).await
-    }
-
-    /// Generates a random pet name for the user
-    fn generate_username(&self) -> String {
-        petname::Petnames::default().generate_one(2, "-")
     }
 }
 
