@@ -6,50 +6,16 @@ use super::{
     repository::{JoinRoomResult, LeaveRoomResult, RoomRepository},
     types::RoomCreateRequest,
 };
-use crate::{
-    event::{EventBus, RoomSubscription},
-    game::GameService,
-    shared::AppError,
-    user::PlayerMappingService,
-    websockets::{ConnectionManager, WebSocketRoomSubscriber},
-};
+use crate::shared::AppError;
 
 /// Service for handling room business logic
 pub struct RoomService {
     repository: Arc<dyn RoomRepository + Send + Sync>,
-    // Dependencies for WebSocket subscription setup
-    connection_manager: Option<Arc<dyn ConnectionManager>>,
-    game_service: Option<Arc<GameService>>,
-    player_mapping: Option<Arc<dyn PlayerMappingService>>,
-    event_bus: Option<EventBus>,
 }
 
 impl RoomService {
     pub fn new(repository: Arc<dyn RoomRepository + Send + Sync>) -> Self {
-        Self {
-            repository,
-            connection_manager: None,
-            game_service: None,
-            player_mapping: None,
-            event_bus: None,
-        }
-    }
-
-    /// Constructor with all dependencies for WebSocket subscription support
-    pub fn new_with_subscription_deps(
-        repository: Arc<dyn RoomRepository + Send + Sync>,
-        connection_manager: Arc<dyn ConnectionManager>,
-        game_service: Arc<GameService>,
-        player_mapping: Arc<dyn PlayerMappingService>,
-        event_bus: EventBus,
-    ) -> Self {
-        Self {
-            repository,
-            connection_manager: Some(connection_manager),
-            game_service: Some(game_service),
-            player_mapping: Some(player_mapping),
-            event_bus: Some(event_bus),
-        }
+        Self { repository }
     }
 
     /// Creates a new room with a generated ID
@@ -65,65 +31,6 @@ impl RoomService {
         info!(room_id = %room_model.id, "Room created successfully");
 
         Ok(room_model)
-    }
-
-    /// Creates a new room and sets up WebSocket subscription
-    #[instrument(skip(self))]
-    pub async fn create_room_with_subscription(
-        &self,
-        request: RoomCreateRequest,
-    ) -> Result<RoomModel, AppError> {
-        // Create room using existing method
-        let room_model = self.create_room(request).await?;
-
-        // Set up WebSocket subscription if dependencies are available
-        self.setup_room_subscription(&room_model.id).await?;
-
-        Ok(room_model)
-    }
-
-    /// Sets up WebSocket subscription for a room
-    #[instrument(skip(self))]
-    async fn setup_room_subscription(&self, room_id: &str) -> Result<(), AppError> {
-        // Check if all dependencies are available
-        let connection_manager = self
-            .connection_manager
-            .as_ref()
-            .ok_or_else(|| AppError::Internal)?;
-        let game_service = self
-            .game_service
-            .as_ref()
-            .ok_or_else(|| AppError::Internal)?;
-        let player_mapping = self
-            .player_mapping
-            .as_ref()
-            .ok_or_else(|| AppError::Internal)?;
-        let event_bus = self.event_bus.as_ref().ok_or_else(|| AppError::Internal)?;
-
-        info!(room_id = %room_id, "Setting up WebSocket subscription");
-
-        // Create a simple RoomService for the subscriber (without subscription dependencies to avoid cycles)
-        let subscriber_room_service = Arc::new(Self::new(Arc::clone(&self.repository)));
-
-        // Create WebSocket room subscriber
-        let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
-            subscriber_room_service,
-            Arc::clone(connection_manager),
-            Arc::clone(game_service),
-            Arc::clone(player_mapping),
-            event_bus.clone(),
-        ));
-
-        // Create and start room subscription
-        let room_subscription =
-            RoomSubscription::new(room_id.to_string(), room_subscriber, event_bus.clone());
-
-        // Start the subscription background task
-        let _subscription_handle = room_subscription.start().await;
-
-        info!(room_id = %room_id, "WebSocket subscription active");
-
-        Ok(())
     }
 
     /// Gets room details as a response object for API endpoints

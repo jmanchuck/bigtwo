@@ -7,9 +7,10 @@ use tracing::{info, instrument};
 
 use super::types::{CreateRoomApiRequest, JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
-    event::RoomEvent,
+    event::{RoomEvent, RoomSubscription},
     session::SessionClaims,
     shared::{AppError, AppState},
+    websockets::WebSocketRoomSubscriber,
 };
 
 /// HTTP handler for creating a new room
@@ -35,9 +36,26 @@ pub async fn create_room(
     // Create request using authenticated session's UUID
     let request = RoomCreateRequest { host_uuid };
 
-    // Use injected service from app state - now with subscription setup included
+    // Create room using business-logic-only service
     let service = Arc::clone(&state.room_service);
-    let room_model = service.create_room_with_subscription(request).await?;
+    let room_model = service.create_room(request).await?;
+
+    // Set up WebSocket subscription for this room at the composition edge
+    let subscriber_room_service = Arc::clone(&state.room_service);
+    let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
+        subscriber_room_service,
+        Arc::clone(&state.connection_manager),
+        Arc::clone(&state.game_service),
+        Arc::clone(&state.player_mapping),
+        state.event_bus.clone(),
+    ));
+
+    let room_subscription = RoomSubscription::new(
+        room_model.id.clone(),
+        room_subscriber,
+        state.event_bus.clone(),
+    );
+    let _ = room_subscription.start().await;
     // Map host UUID to display name for response
     let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
     let host_name = state
