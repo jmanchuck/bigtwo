@@ -69,13 +69,16 @@ impl RoomService {
 
     /// Creates a new room and sets up WebSocket subscription
     #[instrument(skip(self))]
-    pub async fn create_room_with_subscription(&self, request: RoomCreateRequest) -> Result<RoomModel, AppError> {
+    pub async fn create_room_with_subscription(
+        &self,
+        request: RoomCreateRequest,
+    ) -> Result<RoomModel, AppError> {
         // Create room using existing method
         let room_model = self.create_room(request).await?;
-        
+
         // Set up WebSocket subscription if dependencies are available
         self.setup_room_subscription(&room_model.id).await?;
-        
+
         Ok(room_model)
     }
 
@@ -83,20 +86,25 @@ impl RoomService {
     #[instrument(skip(self))]
     async fn setup_room_subscription(&self, room_id: &str) -> Result<(), AppError> {
         // Check if all dependencies are available
-        let connection_manager = self.connection_manager.as_ref()
+        let connection_manager = self
+            .connection_manager
+            .as_ref()
             .ok_or_else(|| AppError::Internal)?;
-        let game_service = self.game_service.as_ref()
+        let game_service = self
+            .game_service
+            .as_ref()
             .ok_or_else(|| AppError::Internal)?;
-        let player_mapping = self.player_mapping.as_ref()
+        let player_mapping = self
+            .player_mapping
+            .as_ref()
             .ok_or_else(|| AppError::Internal)?;
-        let event_bus = self.event_bus.as_ref()
-            .ok_or_else(|| AppError::Internal)?;
+        let event_bus = self.event_bus.as_ref().ok_or_else(|| AppError::Internal)?;
 
         info!(room_id = %room_id, "Setting up WebSocket subscription");
 
         // Create a simple RoomService for the subscriber (without subscription dependencies to avoid cycles)
         let subscriber_room_service = Arc::new(Self::new(Arc::clone(&self.repository)));
-        
+
         // Create WebSocket room subscriber
         let room_subscriber = Arc::new(WebSocketRoomSubscriber::new(
             subscriber_room_service,
@@ -107,11 +115,8 @@ impl RoomService {
         ));
 
         // Create and start room subscription
-        let room_subscription = RoomSubscription::new(
-            room_id.to_string(),
-            room_subscriber,
-            event_bus.clone(),
-        );
+        let room_subscription =
+            RoomSubscription::new(room_id.to_string(), room_subscriber, event_bus.clone());
 
         // Start the subscription background task
         let _subscription_handle = room_subscription.start().await;

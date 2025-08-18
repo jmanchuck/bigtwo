@@ -106,7 +106,6 @@ impl AppStateBuilder {
         self
     }
 
-
     pub fn with_connection_manager(mut self, manager: Arc<dyn ConnectionManager>) -> Self {
         self.connection_manager = Some(manager);
         self
