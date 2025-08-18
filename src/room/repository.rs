@@ -131,13 +131,7 @@ impl RoomRepository for InMemoryRoomRepository {
             }
         };
 
-        // Check if room is at capacity
-        if room.is_full() {
-            debug!(room_id = %room_id, current_count = room.get_player_count(), "Room is full");
-            return Ok(JoinRoomResult::RoomFull);
-        }
-
-        // Check if player is already in room by either username or UUID (prevent duplicates)
+        // Idempotency: if player is already in room, treat as success even if room is full
         if room.has_player(player_uuid) {
             debug!(
                 room_id = %room_id,
@@ -145,6 +139,12 @@ impl RoomRepository for InMemoryRoomRepository {
                 "Player already in room"
             );
             return Ok(JoinRoomResult::Success(room.clone()));
+        }
+
+        // Check if room is at capacity (after idempotency check)
+        if room.is_full() {
+            debug!(room_id = %room_id, current_count = room.get_player_count(), "Room is full");
+            return Ok(JoinRoomResult::RoomFull);
         }
 
         // Add player to the room (both username and UUID)
@@ -419,6 +419,30 @@ mod tests {
         let result = repo.try_join_room("test-room", "player4").await.unwrap();
 
         assert!(matches!(result, JoinRoomResult::RoomFull));
+    }
+
+    #[tokio::test]
+    async fn test_try_join_room_idempotent_when_full() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "host");
+
+        // Fill room to capacity including the target player
+        room.add_player("player1".to_string());
+        room.add_player("player2".to_string());
+        room.add_player("player3".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Now room is full (host + player1 + player2 + player3 in tests count terms)
+        // Re-join with an existing player should succeed (idempotent)
+        let result = repo.try_join_room("test-room", "player1").await.unwrap();
+
+        match result {
+            JoinRoomResult::Success(updated_room) => {
+                assert!(updated_room.has_player("player1"));
+                assert_eq!(updated_room.get_player_count(), 4);
+            }
+            _ => panic!("Expected idempotent success for existing player in full room"),
+        }
     }
 
     #[tokio::test]

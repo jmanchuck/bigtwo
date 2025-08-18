@@ -3,7 +3,7 @@ use axum::{
     Extension, Json,
 };
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 use super::types::{CreateRoomApiRequest, JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
@@ -142,6 +142,21 @@ pub async fn join_room(
         .get_player_uuid_by_session(&claims.session_id)
         .await?
         .ok_or_else(|| AppError::Unauthorized("No player UUID for session".to_string()))?;
+
+    // Ensure player UUID is mapped to username (in case of reconnection)
+    if let Err(e) = state
+        .player_mapping
+        .register_player(player_uuid.clone(), claims.username.clone())
+        .await
+    {
+        // Log but don't fail - player may already be registered
+        debug!(
+            player_uuid = %player_uuid,
+            username = %claims.username,
+            error = %e,
+            "Player mapping registration failed (may already exist)"
+        );
+    }
 
     // Join the room (business logic) using UUID
     let room_model = service
