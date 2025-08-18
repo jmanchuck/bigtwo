@@ -29,7 +29,7 @@ impl SessionService {
     ) -> Self {
         let token_config = TokenConfig::new();
         let session_to_player_uuid = Arc::new(RwLock::new(HashMap::new()));
-        
+
         // Create session creator with default generators
         let session_creator = SessionCreator::new(
             Arc::new(DefaultUuidGenerator::new()),
@@ -54,7 +54,7 @@ impl SessionService {
     #[instrument(skip(self))]
     pub async fn create_session(&self) -> Result<SessionResponse, AppError> {
         info!("Starting session creation");
-        
+
         match self.session_creator.create_session().await {
             Ok(creation_result) => {
                 info!("Session creation completed successfully");
@@ -200,7 +200,6 @@ impl SessionService {
     pub async fn get_playername_by_uuid(&self, player_uuid: &str) -> Option<String> {
         self.player_mapping.get_playername(player_uuid).await
     }
-
 }
 
 #[cfg(test)]

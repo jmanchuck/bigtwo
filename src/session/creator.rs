@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 use tracing::{info, instrument};
 
 use super::{
-    generators::{UuidGenerator, UsernameGenerator},
+    generators::{UsernameGenerator, UuidGenerator},
     models::SessionModel,
     repository::SessionRepository,
     token::TokenConfig,
@@ -120,31 +120,22 @@ impl SessionCreator {
 
     /// Generate username using configured generator
     async fn generate_username(&self) -> Result<String, AppError> {
-        self.username_generator
-            .generate()
-            .await
-            .pipe(Ok)
+        self.username_generator.generate().await.pipe(Ok)
     }
 
     /// Generate player UUID using configured generator
     async fn generate_player_uuid(&self) -> Result<String, AppError> {
-        self.uuid_generator
-            .generate()
-            .await
-            .pipe(Ok)
+        self.uuid_generator.generate().await.pipe(Ok)
     }
 
     /// Create session model with proper expiration
     async fn create_session_model(&self, username: String) -> Result<SessionModel, AppError> {
-        SessionModel::new(username, self.config.expiration_days)
-            .pipe(Ok)
+        SessionModel::new(username, self.config.expiration_days).pipe(Ok)
     }
 
     /// Store session in repository
     async fn store_session(&self, session_model: &SessionModel) -> Result<(), AppError> {
-        self.session_repository
-            .create_session(session_model)
-            .await
+        self.session_repository.create_session(session_model).await
     }
 
     /// Register player mapping, returns true if cleanup is needed on failure
@@ -178,18 +169,18 @@ impl SessionCreator {
     }
 
     /// Create JWT token with session information
-    async fn create_jwt_token(
-        &self,
-        session_id: &str,
-        username: &str,
-    ) -> Result<String, AppError> {
+    async fn create_jwt_token(&self, session_id: &str, username: &str) -> Result<String, AppError> {
         self.token_config
             .create_token(session_id.to_string(), username.to_string())
     }
 
     /// Cleanup partial session creation (for future enhancement)
     #[allow(dead_code)]
-    async fn cleanup_partial_session(&self, session_id: &str, player_uuid: &str) -> Result<(), AppError> {
+    async fn cleanup_partial_session(
+        &self,
+        session_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), AppError> {
         // Remove from session repository
         let _ = self.session_repository.delete_session(session_id).await;
 
@@ -274,13 +265,19 @@ mod tests {
     #[tokio::test]
     async fn test_create_multiple_sessions_unique() {
         let creator = create_test_session_creator();
-        
+
         let result1 = creator.create_session().await.unwrap();
         let result2 = creator.create_session().await.unwrap();
 
         // Sessions should be unique
-        assert_ne!(result1.session_response.session_id, result2.session_response.session_id);
-        assert_ne!(result1.session_response.player_uuid, result2.session_response.player_uuid);
+        assert_ne!(
+            result1.session_response.session_id,
+            result2.session_response.session_id
+        );
+        assert_ne!(
+            result1.session_response.player_uuid,
+            result2.session_response.player_uuid
+        );
         // Usernames may or may not be unique (petnames can repeat)
     }
 }
