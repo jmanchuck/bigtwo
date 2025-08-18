@@ -120,17 +120,17 @@ impl SessionCreator {
 
     /// Generate username using configured generator
     async fn generate_username(&self) -> Result<String, AppError> {
-        self.username_generator.generate().await.pipe(Ok)
+        Ok(self.username_generator.generate().await)
     }
 
     /// Generate player UUID using configured generator
     async fn generate_player_uuid(&self) -> Result<String, AppError> {
-        self.uuid_generator.generate().await.pipe(Ok)
+        Ok(self.uuid_generator.generate().await)
     }
 
     /// Create session model with proper expiration
     async fn create_session_model(&self, username: String) -> Result<SessionModel, AppError> {
-        SessionModel::new(username, self.config.expiration_days).pipe(Ok)
+        Ok(SessionModel::new(username, self.config.expiration_days))
     }
 
     /// Store session in repository
@@ -195,21 +195,7 @@ impl SessionCreator {
     }
 }
 
-/// Extension trait for pipe operations
-trait Pipe<T> {
-    fn pipe<U, F>(self, f: F) -> U
-    where
-        F: FnOnce(T) -> U;
-}
-
-impl<T> Pipe<T> for T {
-    fn pipe<U, F>(self, f: F) -> U
-    where
-        F: FnOnce(T) -> U,
-    {
-        f(self)
-    }
-}
+// (Pipe helper removed; use direct returns for clarity)
 
 #[cfg(test)]
 mod tests {
