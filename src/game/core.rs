@@ -235,6 +235,35 @@ impl Game {
         }
     }
 
+    /// Get the cards from the last non-pass hand played
+    pub fn last_non_pass_cards(&self) -> Vec<Card> {
+        if let Some(last_non_pass_hand) = self.played_hands.iter().rev().find(|h| **h != Hand::Pass)
+        {
+            last_non_pass_hand.to_cards()
+        } else {
+            vec![]
+        }
+    }
+
+    /// Compute the UUID of the player who played the last non-pass hand
+    pub fn last_non_pass_player_uuid(&self) -> Option<String> {
+        // If there are no hands or only passes since start, there is no last non-pass player
+        if self.played_hands.iter().all(|h| *h == Hand::Pass) {
+            return None;
+        }
+
+        let num_players = self.players.len();
+        if num_players == 0 {
+            return None;
+        }
+
+        // The last player who played a non-pass is the one before the current player,
+        // adjusted by the number of consecutive passes
+        let last_index =
+            (self.current_turn + num_players - 1 - self.consecutive_passes) % num_players;
+        Some(self.players[last_index].uuid.clone())
+    }
+
     pub fn get_last_played_hand(&self) -> Option<&Hand> {
         self.played_hands.last()
     }

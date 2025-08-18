@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     event::{RoomEvent, RoomEventError, RoomEventHandler},
@@ -26,6 +26,7 @@ pub struct WebSocketRoomSubscriber {
     chat_handlers: ChatEventHandlers,
     game_handlers: GameEventHandlers,
     connection_handlers: ConnectionEventHandlers,
+    game_service: Arc<GameService>,
 }
 
 #[async_trait]
@@ -66,9 +67,24 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .await
             }
             RoomEvent::PlayerDisconnected { player } => {
-                self.connection_handlers
-                    .handle_leave_request(room_id, &player)
-                    .await
+                // Only remove player if no active game (allow reconnection during games)
+                if let Some(_game) = self.game_service.get_game(room_id).await {
+                    debug!(
+                        room_id = %room_id,
+                        player = %player,
+                        "Player disconnected but game is active - keeping in room for reconnection"
+                    );
+                    Ok(())
+                } else {
+                    debug!(
+                        room_id = %room_id,
+                        player = %player,
+                        "Player disconnected from idle room - removing from room"
+                    );
+                    self.connection_handlers
+                        .handle_leave_request(room_id, &player)
+                        .await
+                }
             }
             RoomEvent::StartGame { game } => {
                 self.game_handlers.handle_start_game(room_id, game).await
@@ -148,6 +164,7 @@ impl WebSocketRoomSubscriber {
             chat_handlers,
             game_handlers,
             connection_handlers,
+            game_service,
         }
     }
 }

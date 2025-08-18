@@ -11,6 +11,7 @@ use tracing::{debug, info, warn};
 use crate::event::EventBus;
 use crate::event::RoomEvent;
 use crate::game::Card;
+// Use Game's public methods to access last non-pass state instead of private types
 use crate::shared::{AppError, AppState};
 use crate::websockets::messages::{MessageType, WebSocketMessage};
 
@@ -348,6 +349,57 @@ async fn handle_websocket_connection(
                 room_id = %room_id,
                 username = %username,
                 "Sent initial PLAYERS_LIST to newly connected player"
+            );
+        }
+    }
+
+    // If a game is active, send game hydration data to the reconnecting player
+    if let Some(game) = app_state.game_service.get_game(&room_id).await {
+        // Find the reconnecting player in the game
+        if let Some(player) = game.players().iter().find(|p| p.uuid == player_uuid) {
+            let hydration_message = crate::websockets::messages::WebSocketMessage::game_started(
+                game.current_player_turn().clone(),
+                player.cards.iter().map(|card| card.to_string()).collect(),
+                game.players().iter().map(|p| p.uuid.clone()).collect(),
+            );
+
+            if let Ok(message_json) = serde_json::to_string(&hydration_message) {
+                let _ = outbound_sender.send(message_json);
+                debug!(
+                    room_id = %room_id,
+                    username = %username,
+                    "Sent game hydration GAME_STARTED to reconnecting player"
+                );
+            }
+
+            // Additionally hydrate last played cards (if any) so UI shows table state
+            let last_cards = game
+                .last_non_pass_cards()
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>();
+            if !last_cards.is_empty() {
+                if let Some(last_player_uuid) = game.last_non_pass_player_uuid() {
+                    let move_message = crate::websockets::messages::WebSocketMessage::move_played(
+                        last_player_uuid,
+                        last_cards,
+                    );
+                    if let Ok(move_json) = serde_json::to_string(&move_message) {
+                        let _ = outbound_sender.send(move_json);
+                        debug!(
+                            room_id = %room_id,
+                            username = %username,
+                            "Sent hydration MOVE_PLAYED (last table state) to reconnecting player"
+                        );
+                    }
+                }
+            }
+        } else {
+            debug!(
+                room_id = %room_id,
+                username = %username,
+                player_uuid = %player_uuid,
+                "Player not found in active game - not sending hydration"
             );
         }
     }
