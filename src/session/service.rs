@@ -6,7 +6,6 @@ use tracing::{info, instrument, warn};
 use super::{
     creator::{SessionCreationConfig, SessionCreator},
     generators::{DefaultUuidGenerator, PetNameUsernameGenerator},
-    models::SessionModel,
     repository::SessionRepository,
     token::TokenConfig,
     types::{SessionClaims, SessionResponse},

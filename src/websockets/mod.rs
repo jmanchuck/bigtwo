@@ -7,6 +7,7 @@ pub use websocket_room_subscriber::WebSocketRoomSubscriber;
 
 // Internal modules
 mod connection_manager;
+pub mod event_handlers;
 mod handler;
 mod messages;
 mod socket;

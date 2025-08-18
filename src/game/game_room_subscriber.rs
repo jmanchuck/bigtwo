@@ -7,7 +7,6 @@ use tracing::info;
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
     game::{cards::Card, service::GameService},
-    user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService},
 };
 
 pub struct GameEventRoomSubscriber {
@@ -174,6 +173,7 @@ mod tests {
         core::{Game, Player},
         GameService,
     };
+    use crate::user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService};
 
     fn create_test_players() -> Vec<Player> {
         vec![
