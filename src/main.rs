@@ -1,3 +1,4 @@
+mod bot;
 mod event;
 mod game;
 mod room;
@@ -24,6 +25,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::bot::BotManager;
 use crate::websockets::InMemoryConnectionManager;
 use crate::{
     event::EventBus, game::GameService, user::mapping_service::InMemoryPlayerMappingService,
@@ -73,6 +75,7 @@ async fn main() {
     let event_bus = EventBus::new();
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
     let game_service = Arc::new(GameService::new(player_mapping.clone()));
+    let bot_manager = Arc::new(BotManager::new());
     // Create RoomService focused purely on business logic
     let room_service = Arc::new(RoomService::new(room_repository));
 
@@ -84,6 +87,7 @@ async fn main() {
         .with_connection_manager(connection_manager)
         .with_game_service(game_service)
         .with_player_mapping(player_mapping)
+        .with_bot_manager(bot_manager)
         .build()
         .expect("Failed to build AppState - all required dependencies should be provided");
 
@@ -126,6 +130,20 @@ async fn main() {
             )),
         )
         .route("/room/:room_id", get(room::get_room_details))
+        .route(
+            "/room/:room_id/bot",
+            post(bot::handlers::add_bot_to_room).layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                session::jwt_auth,
+            )),
+        )
+        .route(
+            "/room/:room_id/bot/:bot_uuid",
+            axum::routing::delete(bot::handlers::remove_bot_from_room).layer(middleware::from_fn_with_state(
+                app_state.clone(),
+                session::jwt_auth,
+            )),
+        )
         .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

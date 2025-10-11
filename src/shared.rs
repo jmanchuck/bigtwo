@@ -7,6 +7,7 @@ use serde_json::json;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::bot::BotManager;
 use crate::room::repository::RoomRepository;
 use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
@@ -23,6 +24,7 @@ pub struct AppState {
     pub connection_manager: Arc<dyn ConnectionManager>,
     pub game_service: Arc<GameService>,
     pub player_mapping: Arc<dyn PlayerMappingService>,
+    pub bot_manager: Arc<BotManager>,
 }
 
 impl AppState {
@@ -33,6 +35,7 @@ impl AppState {
         connection_manager: Arc<dyn ConnectionManager>,
         game_service: Arc<GameService>,
         player_mapping: Arc<dyn PlayerMappingService>,
+        bot_manager: Arc<BotManager>,
     ) -> Self {
         Self {
             session_service,
@@ -41,6 +44,7 @@ impl AppState {
             connection_manager,
             game_service,
             player_mapping,
+            bot_manager,
         }
     }
 
@@ -59,6 +63,7 @@ pub struct AppStateBuilder {
     game_service: Option<Arc<GameService>>,
     player_mapping: Option<Arc<dyn PlayerMappingService>>,
     event_bus: Option<EventBus>,
+    bot_manager: Option<Arc<BotManager>>,
 }
 
 #[derive(Error, Debug)]
@@ -78,6 +83,7 @@ impl AppStateBuilder {
             game_service: None,
             player_mapping: None,
             event_bus: None,
+            bot_manager: None,
         }
     }
 
@@ -126,6 +132,11 @@ impl AppStateBuilder {
         self
     }
 
+    pub fn with_bot_manager(mut self, manager: Arc<BotManager>) -> Self {
+        self.bot_manager = Some(manager);
+        self
+    }
+
     /// Build AppState with validation
     pub fn build(self) -> Result<AppState, AppStateBuilderError> {
         let player_mapping = self
@@ -151,6 +162,8 @@ impl AppStateBuilder {
             return Err(AppStateBuilderError::MissingDependency("room_service"));
         };
 
+        let bot_manager = self.bot_manager.unwrap_or_else(|| Arc::new(BotManager::new()));
+
         Ok(AppState {
             session_service,
             room_service,
@@ -158,6 +171,7 @@ impl AppStateBuilder {
             connection_manager,
             game_service,
             player_mapping,
+            bot_manager,
         })
     }
 
@@ -196,6 +210,8 @@ impl AppStateBuilder {
             .connection_manager
             .unwrap_or_else(|| Arc::new(crate::websockets::InMemoryConnectionManager::new()));
 
+        let bot_manager = self.bot_manager.unwrap_or_else(|| Arc::new(BotManager::new()));
+
         AppState {
             session_service,
             room_service,
@@ -203,6 +219,7 @@ impl AppStateBuilder {
             connection_manager,
             game_service,
             player_mapping,
+            bot_manager,
         }
     }
 }
@@ -230,6 +247,9 @@ pub enum AppError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("Internal server error")]
     Internal,
 }
@@ -245,6 +265,7 @@ impl IntoResponse for AppError {
             ),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
             AppError::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
@@ -373,6 +394,10 @@ pub mod test_utils {
                 .game_service
                 .unwrap_or_else(|| Arc::new(GameService::new(player_mapping.clone())));
 
+            let bot_manager = self
+                .bot_manager
+                .unwrap_or_else(|| Arc::new(crate::bot::BotManager::new()));
+
             AppState {
                 session_service,
                 room_service,
@@ -382,6 +407,7 @@ pub mod test_utils {
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
                 game_service,
                 player_mapping,
+                bot_manager,
             }
         }
     }

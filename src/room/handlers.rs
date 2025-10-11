@@ -7,7 +7,9 @@ use tracing::{debug, info, instrument};
 
 use super::types::{CreateRoomApiRequest, JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
+    bot::BotRoomSubscriber,
     event::{RoomEvent, RoomSubscription},
+    game::GameEventRoomSubscriber,
     session::SessionClaims,
     shared::{AppError, AppState},
     websockets::WebSocketRoomSubscriber,
@@ -56,6 +58,33 @@ pub async fn create_room(
         state.event_bus.clone(),
     );
     let _ = room_subscription.start().await;
+
+    // Set up game event subscription for this room
+    let game_subscriber = Arc::new(GameEventRoomSubscriber::new(
+        Arc::clone(&state.game_service),
+        state.event_bus.clone(),
+    ));
+
+    let game_subscription = RoomSubscription::new(
+        room_model.id.clone(),
+        game_subscriber,
+        state.event_bus.clone(),
+    );
+    let _ = game_subscription.start().await;
+
+    // Set up bot subscription for this room
+    let bot_subscriber = Arc::new(BotRoomSubscriber::new(
+        Arc::clone(&state.bot_manager),
+        Arc::clone(&state.game_service),
+        state.event_bus.clone(),
+    ));
+
+    let bot_subscription = RoomSubscription::new(
+        room_model.id.clone(),
+        bot_subscriber,
+        state.event_bus.clone(),
+    );
+    let _ = bot_subscription.start().await;
     // Map host UUID to display name for response
     let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
     let host_name = state

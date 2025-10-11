@@ -20,6 +20,7 @@ pub enum MessageType {
     GameStarted,
     GameWon,
     GameReset,
+    BotAdded,
 }
 
 /// Metadata for WebSocket messages
@@ -100,6 +101,12 @@ pub struct GameWonPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameResetPayload {
     // Empty payload - just signals that game should reset to lobby
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BotAddedPayload {
+    pub bot_uuid: String,
+    pub bot_name: String,
 }
 
 /// Helper functions for creating messages
@@ -206,6 +213,15 @@ impl WebSocketMessage {
             serde_json::to_value(payload).unwrap(),
         )
     }
+
+    /// Create a BOT_ADDED message
+    pub fn bot_added(bot_uuid: String, bot_name: String) -> Self {
+        let payload = BotAddedPayload { bot_uuid, bot_name };
+        Self::new(
+            MessageType::BotAdded,
+            serde_json::to_value(payload).unwrap(),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -262,5 +278,9 @@ mod tests {
         // game_reset
         let gr = WebSocketMessage::game_reset();
         assert!(matches!(gr.message_type, MessageType::GameReset));
+
+        // bot_added
+        let ba = WebSocketMessage::bot_added("bot-123".to_string(), "Bot 1".to_string());
+        assert!(matches!(ba.message_type, MessageType::BotAdded));
     }
 }
