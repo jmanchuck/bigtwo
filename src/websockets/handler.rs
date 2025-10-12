@@ -402,42 +402,6 @@ async fn handle_websocket_connection(
                     );
                 }
             }
-
-            // Additionally hydrate last played cards (if any) so UI shows table state
-            if !last_cards_vec.is_empty() {
-                if let Some(last_player_uuid) = last_player_uuid {
-                    let move_message = crate::websockets::messages::WebSocketMessage::move_played(
-                        last_player_uuid,
-                        last_cards_vec,
-                    );
-                    match serde_json::to_string(&move_message) {
-                        Ok(move_json) => {
-                            if let Err(error) = outbound_sender.send(move_json) {
-                                warn!(
-                                    room_id = %room_id,
-                                    username = %username,
-                                    ?error,
-                                    "Failed to send hydration move message"
-                                );
-                            } else {
-                                debug!(
-                                    room_id = %room_id,
-                                    username = %username,
-                                    "Sent hydration MOVE_PLAYED (last table state) to reconnecting player"
-                                );
-                            }
-                        }
-                        Err(error) => {
-                            warn!(
-                                room_id = %room_id,
-                                username = %username,
-                                ?error,
-                                "Failed to serialize hydration move message"
-                            );
-                        }
-                    }
-                }
-            }
         } else {
             warn!(
                 room_id = %room_id,
