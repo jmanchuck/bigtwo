@@ -80,6 +80,16 @@ impl<'a> MessageAssertion<'a> {
         }
     }
 
+    /// Count how many messages of a specific type a player received (non-consuming)
+    pub async fn count_message_type(&self, player: &str, msg_type: MessageType) -> usize {
+        let messages = self.setup.mock_conn_manager.get_messages_for(player).await;
+        messages
+            .iter()
+            .filter_map(|msg_str| serde_json::from_str::<WebSocketMessage>(msg_str).ok())
+            .filter(|msg| msg.message_type == msg_type)
+            .count()
+    }
+
     /// Assert that players received a sequence of message types in order
     pub async fn received_message_sequence(
         self,

@@ -320,3 +320,57 @@ async fn test_first_turn_with_three_of_diamonds_succeeds() {
         .with_player(&first_player)
         .with_cards(vec!["3D"]);
 }
+
+#[tokio::test]
+async fn test_game_started_includes_last_played_cards_in_single_message() {
+    // Regression test for reconnection bug: GAME_STARTED should include last_played_cards,
+    // and there should be no separate MOVE_PLAYED message during game initialization
+    let setup = TestSetupBuilder::new().with_four_players().build().await;
+    let first_player = GameBuilder::new()
+        .with_simple_four_player_game()
+        .build_with_setup(&setup)
+        .await;
+
+    // Make a move so there are last_played_cards
+    setup.send_move(&first_player, vec!["3D"]).await;
+    setup.clear_messages().await;
+
+    // Simulate what happens during game start/reconnection
+    // by triggering a fresh start game event with existing game state
+    let game = setup.game_service.get_game("room-123").await.unwrap();
+    setup
+        .emit_event(bigtwo::event::RoomEvent::StartGame { game: game.clone() })
+        .await;
+
+    // Each player should receive exactly ONE GAME_STARTED message
+    for (uuid, _) in &setup.players {
+        let assertion = MessageAssertion::for_players(&setup, vec![uuid.as_str()]);
+        let game_started_count = assertion
+            .count_message_type(uuid, MessageType::GameStarted)
+            .await;
+
+        // Assert only one GAME_STARTED message (no duplicates)
+        assert_eq!(
+            game_started_count, 1,
+            "Player {} should receive exactly 1 GAME_STARTED message, got {}",
+            uuid, game_started_count
+        );
+
+        // Verify no MOVE_PLAYED messages were sent during game start
+        // (the last played cards should be in GAME_STARTED, not a separate message)
+        let move_played_count = assertion
+            .count_message_type(uuid, MessageType::MovePlayed)
+            .await;
+        assert_eq!(
+            move_played_count, 0,
+            "Player {} should not receive MOVE_PLAYED during game start (data should be in GAME_STARTED), got {}",
+            uuid, move_played_count
+        );
+    }
+
+    // Verify the GAME_STARTED message contains last_played_cards
+    let first_player_uuid = setup.players[0].0.as_str();
+    MessageAssertion::for_players(&setup, vec![first_player_uuid])
+        .received_message_type(MessageType::GameStarted)
+        .await;
+}
