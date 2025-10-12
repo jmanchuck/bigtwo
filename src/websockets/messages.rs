@@ -85,6 +85,10 @@ pub struct GameStartedPayload {
     pub current_turn: String,
     pub cards: Vec<String>, // Player's hand
     pub player_list: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_played_cards: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_played_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,11 +151,15 @@ impl WebSocketMessage {
         current_turn: String,
         cards: Vec<String>,
         player_list: Vec<String>,
+        last_played_cards: Option<Vec<String>>,
+        last_played_by: Option<String>,
     ) -> Self {
         let payload = GameStartedPayload {
             current_turn,
             cards,
             player_list,
+            last_played_cards,
+            last_played_by,
         };
         Self::new(
             MessageType::GameStarted,
@@ -236,6 +244,8 @@ mod tests {
             "u1".to_string(),
             vec!["3D".to_string()],
             vec!["u1".to_string()],
+            Some(vec!["4H".to_string()]),
+            Some("u2".to_string()),
         );
         assert!(matches!(gs.message_type, MessageType::GameStarted));
 
