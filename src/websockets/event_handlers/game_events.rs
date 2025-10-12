@@ -38,6 +38,9 @@ impl GameEventHandlers {
 
         let current_player_turn = game.current_player_turn();
 
+        let last_played_cards = game.last_non_pass_cards();
+        let last_played_by = game.last_non_pass_player_uuid();
+
         for player in game.players() {
             let player_message = WebSocketMessage::game_started(
                 current_player_turn.clone(),
@@ -46,6 +49,17 @@ impl GameEventHandlers {
                     .iter()
                     .map(|player| player.uuid.clone())
                     .collect(),
+                if !last_played_cards.is_empty() {
+                    Some(
+                        last_played_cards
+                            .iter()
+                            .map(|card| card.to_string())
+                            .collect(),
+                    )
+                } else {
+                    None
+                },
+                last_played_by.clone(),
             );
 
             let message_json = serde_json::to_string(&player_message).map_err(|e| {
