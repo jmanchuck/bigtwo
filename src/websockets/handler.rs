@@ -376,13 +376,31 @@ async fn handle_websocket_connection(
                 last_player_uuid.clone(),
             );
 
-            if let Ok(message_json) = serde_json::to_string(&hydration_message) {
-                let _ = outbound_sender.send(message_json);
-                debug!(
-                    room_id = %room_id,
-                    username = %username,
-                    "Sent game hydration GAME_STARTED to reconnecting player"
-                );
+            match serde_json::to_string(&hydration_message) {
+                Ok(message_json) => {
+                    if let Err(error) = outbound_sender.send(message_json) {
+                        warn!(
+                            room_id = %room_id,
+                            username = %username,
+                            ?error,
+                            "Failed to send game hydration message"
+                        );
+                    } else {
+                        debug!(
+                            room_id = %room_id,
+                            username = %username,
+                            "Sent game hydration GAME_STARTED to reconnecting player"
+                        );
+                    }
+                }
+                Err(error) => {
+                    warn!(
+                        room_id = %room_id,
+                        username = %username,
+                        ?error,
+                        "Failed to serialize game hydration message"
+                    );
+                }
             }
 
             // Additionally hydrate last played cards (if any) so UI shows table state
@@ -392,16 +410,41 @@ async fn handle_websocket_connection(
                         last_player_uuid,
                         last_cards_vec,
                     );
-                    if let Ok(move_json) = serde_json::to_string(&move_message) {
-                        let _ = outbound_sender.send(move_json);
-                        debug!(
-                            room_id = %room_id,
-                            username = %username,
-                            "Sent hydration MOVE_PLAYED (last table state) to reconnecting player"
-                        );
+                    match serde_json::to_string(&move_message) {
+                        Ok(move_json) => {
+                            if let Err(error) = outbound_sender.send(move_json) {
+                                warn!(
+                                    room_id = %room_id,
+                                    username = %username,
+                                    ?error,
+                                    "Failed to send hydration move message"
+                                );
+                            } else {
+                                debug!(
+                                    room_id = %room_id,
+                                    username = %username,
+                                    "Sent hydration MOVE_PLAYED (last table state) to reconnecting player"
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            warn!(
+                                room_id = %room_id,
+                                username = %username,
+                                ?error,
+                                "Failed to serialize hydration move message"
+                            );
+                        }
                     }
                 }
             }
+        } else {
+            warn!(
+                room_id = %room_id,
+                username = %username,
+                player_uuid = %player_uuid,
+                "Reconnecting player UUID not present in active game"
+            );
         }
     }
 
