@@ -412,12 +412,10 @@ async fn handle_websocket_connection(
                             "Sent game hydration GAME_STARTED to reconnecting player"
                         );
                     }
-                }
-                Err(error) => {
+                } else {
                     warn!(
                         room_id = %room_id,
                         username = %username,
-                        ?error,
                         "Failed to serialize game hydration message"
                     );
                 }

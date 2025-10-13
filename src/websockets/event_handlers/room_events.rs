@@ -50,11 +50,8 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let ws_message = WebSocketMessage::players_list(
-            room.get_player_uuids().clone(),
-            mapping,
-            bot_uuids,
-        );
+        let ws_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
 
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
@@ -111,11 +108,8 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let players_list_message = WebSocketMessage::players_list(
-            room.get_player_uuids().clone(),
-            mapping,
-            bot_uuids,
-        );
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -205,11 +199,8 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let players_list_message = WebSocketMessage::players_list(
-            room.get_player_uuids().clone(),
-            mapping,
-            bot_uuids,
-        );
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -264,11 +255,8 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let players_list_message = WebSocketMessage::players_list(
-            room.get_player_uuids().clone(),
-            mapping,
-            bot_uuids,
-        );
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
