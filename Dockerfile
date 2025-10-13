@@ -25,7 +25,9 @@ COPY . .
 # Touch main.rs to ensure it gets rebuilt
 RUN touch src/main.rs
 
-# Build the actual application
+# Build the actual application with offline mode for sqlx
+# This prevents sqlx from trying to connect to the database during build
+ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
 # Stage 2: Create minimal runtime image
