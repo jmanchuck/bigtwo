@@ -83,6 +83,15 @@ impl BotManager {
             .collect()
     }
 
+    /// Get bot UUIDs in a room (for WebSocket messages)
+    pub async fn get_bot_uuids_in_room(&self, room_id: &str) -> Vec<String> {
+        let bots = self.bots.read().await;
+        bots.values()
+            .filter(|bot| bot.room_id == room_id)
+            .map(|bot| bot.uuid.clone())
+            .collect()
+    }
+
     /// Remove all bots from a room (called when room is deleted)
     pub async fn remove_all_bots_in_room(&self, room_id: &str) -> Result<(), AppError> {
         info!(room_id = %room_id, "Removing all bots from room");

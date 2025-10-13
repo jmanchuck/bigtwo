@@ -339,9 +339,12 @@ async fn handle_websocket_connection(
             }
         }
 
+        let bot_uuids = app_state.bot_manager.get_bot_uuids_in_room(&room_id).await;
+
         let initial_message = crate::websockets::messages::WebSocketMessage::players_list(
             room.get_player_uuids().clone(),
             mapping,
+            bot_uuids,
         );
         if let Ok(message_json) = serde_json::to_string(&initial_message) {
             let _ = outbound_sender.send(message_json);
@@ -357,10 +360,18 @@ async fn handle_websocket_connection(
     if let Some(game) = app_state.game_service.get_game(&room_id).await {
         // Find the reconnecting player in the game
         if let Some(player) = game.players().iter().find(|p| p.uuid == player_uuid) {
+            // Build card counts map for all players
+            let card_counts: std::collections::HashMap<String, usize> = game
+                .players()
+                .iter()
+                .map(|p| (p.uuid.clone(), p.cards.len()))
+                .collect();
+
             let hydration_message = crate::websockets::messages::WebSocketMessage::game_started(
                 game.current_player_turn().clone(),
                 player.cards.iter().map(|card| card.to_string()).collect(),
                 game.players().iter().map(|p| p.uuid.clone()).collect(),
+                card_counts,
             );
 
             if let Ok(message_json) = serde_json::to_string(&hydration_message) {
@@ -380,9 +391,18 @@ async fn handle_websocket_connection(
                 .collect::<Vec<_>>();
             if !last_cards.is_empty() {
                 if let Some(last_player_uuid) = game.last_non_pass_player_uuid() {
+                    // Get remaining cards for the last player who played
+                    let remaining_cards = game
+                        .players()
+                        .iter()
+                        .find(|p| p.uuid == last_player_uuid)
+                        .map(|p| p.cards.len())
+                        .unwrap_or(0);
+
                     let move_message = crate::websockets::messages::WebSocketMessage::move_played(
                         last_player_uuid,
                         last_cards,
+                        remaining_cards,
                     );
                     if let Ok(move_json) = serde_json::to_string(&move_message) {
                         let _ = outbound_sender.send(move_json);

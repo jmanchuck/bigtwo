@@ -151,6 +151,7 @@ impl WebSocketRoomSubscriber {
             Arc::clone(&room_service),
             Arc::clone(&connection_manager),
             Arc::clone(&player_mapping),
+            Arc::clone(&bot_manager),
         );
 
         let chat_handlers =

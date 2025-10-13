@@ -15,6 +15,7 @@ pub struct RoomEventHandlers {
     room_service: Arc<RoomService>,
     connection_manager: Arc<dyn ConnectionManager>,
     player_mapping: Arc<dyn PlayerMappingService>,
+    bot_manager: Arc<crate::bot::BotManager>,
 }
 
 impl RoomEventHandlers {
@@ -22,11 +23,13 @@ impl RoomEventHandlers {
         room_service: Arc<RoomService>,
         connection_manager: Arc<dyn ConnectionManager>,
         player_mapping: Arc<dyn PlayerMappingService>,
+        bot_manager: Arc<crate::bot::BotManager>,
     ) -> Self {
         Self {
             room_service,
             connection_manager,
             player_mapping,
+            bot_manager,
         }
     }
 
@@ -45,7 +48,13 @@ impl RoomEventHandlers {
         )
         .await;
 
-        let ws_message = WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+        let ws_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+        );
 
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
@@ -100,8 +109,13 @@ impl RoomEventHandlers {
         )
         .await;
 
-        let players_list_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+        );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -189,8 +203,13 @@ impl RoomEventHandlers {
         )
         .await;
 
-        let players_list_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+        );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -243,8 +262,13 @@ impl RoomEventHandlers {
         )
         .await;
 
-        let players_list_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+        );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),

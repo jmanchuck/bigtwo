@@ -42,6 +42,13 @@ impl GameEventHandlers {
 
         let current_player_turn = game.current_player_turn();
 
+        // Build card counts map for all players
+        let card_counts: std::collections::HashMap<String, usize> = game
+            .players()
+            .iter()
+            .map(|p| (p.uuid.clone(), p.cards.len()))
+            .collect();
+
         for player in game.players() {
             let player_message = WebSocketMessage::game_started(
                 current_player_turn.clone(),
@@ -50,6 +57,7 @@ impl GameEventHandlers {
                     .iter()
                     .map(|player| player.uuid.clone())
                     .collect(),
+                card_counts.clone(),
             );
 
             let message_json = serde_json::to_string(&player_message).map_err(|e| {
@@ -144,8 +152,19 @@ impl GameEventHandlers {
             "Handling move played event"
         );
 
-        let player_message =
-            WebSocketMessage::move_played(player_uuid.to_string(), cards_to_strings(cards));
+        // Get the player who made the move to find their remaining card count
+        let remaining_cards = game
+            .players()
+            .iter()
+            .find(|p| p.uuid == player_uuid)
+            .map(|p| p.cards.len())
+            .unwrap_or(0);
+
+        let player_message = WebSocketMessage::move_played(
+            player_uuid.to_string(),
+            cards_to_strings(cards),
+            remaining_cards,
+        );
 
         let player_uuids: Vec<String> = game.players().iter().map(|p| p.uuid.clone()).collect();
         MessageBroadcaster::broadcast_to_players(
