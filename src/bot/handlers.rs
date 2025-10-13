@@ -11,7 +11,7 @@ use crate::{
     shared::{AppError, AppState},
 };
 
-use super::types::BotDifficulty;
+use super::{manager::MAX_BOTS_PER_ROOM, types::BotDifficulty};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AddBotRequest {
@@ -78,9 +78,18 @@ pub async fn add_bot_to_room(
         ));
     }
 
-    // Check if room is full
+    // Check if room is full by humans/total capacity
     if room.is_full() {
         return Err(AppError::BadRequest("Room is full".to_string()));
+    }
+
+    // Check current bot count to enforce per-room limit
+    let existing_bot_count = state.bot_manager.get_bots_in_room(&room_id).await.len();
+    if existing_bot_count >= MAX_BOTS_PER_ROOM {
+        return Err(AppError::BadRequest(format!(
+            "Room {} already has the maximum of {} bots",
+            room_id, MAX_BOTS_PER_ROOM
+        )));
     }
 
     // Create the bot
@@ -215,7 +224,26 @@ pub async fn remove_bot_from_room(
         ));
     }
 
-    // Remove the bot from the room
+    if !state.bot_manager.is_bot(&bot_uuid).await {
+        return Err(AppError::BadRequest(format!(
+            "UUID is not a bot: {}",
+            bot_uuid
+        )));
+    }
+
+    let bot = state
+        .bot_manager
+        .get_bot(&bot_uuid)
+        .await
+        .ok_or_else(|| AppError::NotFound(format!("Bot not found: {}", bot_uuid)))?;
+
+    if bot.room_id != room_id {
+        return Err(AppError::BadRequest(
+            "Bot not in specified room".to_string(),
+        ));
+    }
+
+    // Remove the bot from the room first to maintain room invariants
     state
         .room_service
         .leave_room(room_id.clone(), bot_uuid.clone())
@@ -260,7 +288,6 @@ pub async fn remove_bot_from_room(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::test_utils::AppStateBuilder;
 
     #[tokio::test]
     async fn test_add_bot_request_deserialization() {
@@ -289,4 +316,6 @@ mod tests {
         assert!(json.contains("Bot 1"));
         assert!(json.contains("medium"));
     }
+
+    // Additional integration-style tests would go here
 }

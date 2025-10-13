@@ -7,6 +7,8 @@ use crate::shared::AppError;
 
 use super::types::{BotDifficulty, BotPlayer};
 
+pub const MAX_BOTS_PER_ROOM: usize = 3;
+
 /// Manages bot players across all rooms
 #[derive(Clone)]
 pub struct BotManager {
@@ -29,6 +31,13 @@ impl BotManager {
     ) -> Result<BotPlayer, AppError> {
         // Generate a unique bot name based on current bot count in the room
         let bot_count = self.get_bots_in_room(&room_id).await.len();
+
+        if bot_count >= MAX_BOTS_PER_ROOM {
+            return Err(AppError::BadRequest(format!(
+                "Room {} already has the maximum of {} bots",
+                room_id, MAX_BOTS_PER_ROOM
+            )));
+        }
         let bot_name = format!("Bot {}", bot_count + 1);
 
         let bot = BotPlayer::new(room_id, bot_name, difficulty);
@@ -226,5 +235,29 @@ mod tests {
 
         assert_eq!(bot1.name, "Bot 1");
         assert_eq!(bot2.name, "Bot 2");
+    }
+
+    #[tokio::test]
+    async fn test_create_bot_respects_room_limit() {
+        let manager = BotManager::new();
+
+        for _ in 0..MAX_BOTS_PER_ROOM {
+            manager
+                .create_bot("room1".to_string(), BotDifficulty::Easy)
+                .await
+                .unwrap();
+        }
+
+        let result = manager
+            .create_bot("room1".to_string(), BotDifficulty::Easy)
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(AppError::BadRequest(message)) if message.contains("maximum")
+        ));
+
+        let room_bots = manager.get_bots_in_room("room1").await;
+        assert_eq!(room_bots.len(), MAX_BOTS_PER_ROOM);
     }
 }
