@@ -56,12 +56,14 @@ src/
 │   ├── token.rs             # JWT utilities
 │   └── models.rs, types.rs  # Data structures
 ├── room/                     # Game room lifecycle management
-│   ├── handlers.rs          # REST endpoints: create, join, list
+│   ├── handlers.rs          # REST endpoints: create, join, list, get
 │   ├── repository.rs        # In-memory storage (uses pet-name IDs)
 │   ├── service.rs           # Business logic
 │   └── models.rs, types.rs  # Data structures
 ├── game/                     # Big Two game logic and state
-│   ├── cards.rs             # Card types, Big Two sorting rules
+│   ├── cards/               # Card system
+│   │   ├── basic.rs        # Card types, Big Two sorting rules
+│   │   └── hands.rs        # Hand validation and comparison
 │   ├── core.rs              # Core game rules, turn progression
 │   ├── repository.rs        # Game state repository
 │   ├── service.rs           # Game service layer
@@ -69,25 +71,41 @@ src/
 ├── websockets/               # Real-time WebSocket communication
 │   ├── handler.rs           # WebSocket upgrade and message routing
 │   ├── messages.rs          # Message type definitions
+│   ├── event_handlers/      # Organized event handling
+│   │   ├── chat_events.rs  # Chat message handling
+│   │   ├── game_events.rs  # Game move handling
+│   │   ├── room_events.rs  # Room lifecycle events
+│   │   ├── connection_events.rs # Connection/disconnection
+│   │   └── shared/         # Shared utilities (player mapping, broadcasts)
 │   ├── connection_manager.rs # Per-room connection tracking
 │   ├── socket.rs            # Individual WebSocket handling
 │   └── websocket_room_subscriber.rs # Event handler for WebSocket broadcast
-└── utils/                    # Utility functions
+├── bot/                      # AI bot system
+│   ├── manager.rs           # Bot lifecycle management
+│   ├── basic_strategy.rs    # Basic bot playing strategy
+│   ├── bot_room_subscriber.rs # Bot event handling
+│   ├── handlers.rs          # REST endpoints for bot operations
+│   └── types.rs             # Bot-related types
+└── user/                     # User management
+    └── mapping_service.rs   # Player ID to username mapping
 ```
 
 ## Key Components
 
 ### AppState (shared.rs)
-Central dependency injection container holding all repositories, managers, and the event bus. Contains builder pattern for testing.
+Central dependency injection container holding all repositories, services, managers, and the event bus. Contains builder pattern for testing.
 
 ### EventBus (event/)
-Central message broker enabling decoupled communication. Supports both global and room-specific event subscriptions.
+Central message broker enabling decoupled communication. Supports both global and room-specific event subscriptions. Key event types include game moves, player connections/disconnections, and room lifecycle events.
 
-### GameManager (game/gamemanager.rs)
-Manages Big Two game state per room. Handles game creation, move validation, turn progression, and win detection.
+### GameService (game/service.rs)
+Manages Big Two game state per room. Handles game creation, move validation, turn progression, and win detection. Uses event system for communication.
 
 ### ConnectionManager (websockets/connection_manager.rs)
-Tracks WebSocket connections per room for message broadcasting.
+Tracks WebSocket connections per room for message broadcasting. Manages connection lifecycle and message routing.
+
+### BotManager (bot/manager.rs)
+Manages AI bot players in rooms. Handles bot creation, move generation, and lifecycle. Bots use basic strategy to play valid moves.
 
 ### Repository Pattern
 - **SessionRepository**: JWT session storage (in-memory or PostgreSQL)
@@ -107,8 +125,10 @@ Tracks WebSocket connections per room for message broadcasting.
 - `GET /session/validate` - Validate session (authenticated)
 - `POST /room` - Create room (returns pet-name ID)
 - `GET /rooms` - List all rooms
-- `POST /room/{id}/join` - Join room (authenticated)
 - `GET /room/{id}` - Get room details
+- `POST /room/{id}/join` - Join room (authenticated)
+- `DELETE /room/{id}` - Delete room (host only)
+- `POST /room/{id}/bot/add` - Add AI bot to room
 
 ### WebSocket
 - `GET /ws/{room_id}?session_id={session_id}` - Real-time game communication
@@ -143,9 +163,20 @@ cargo test test_name -- --nocapture  # Single test with output
 
 ## Event-Driven Flow
 
-1. **WebSocket Message** → `websockets/handler.rs`
-2. **Parse & Route** → Emit `RoomEvent` via `EventBus`
-3. **Game Logic** → `game/game_room_subscriber.rs` processes game events
-4. **WebSocket Broadcast** → `websockets/websocket_room_subscriber.rs` sends responses
+1. **WebSocket Message** → `websockets/handler.rs` processes incoming message
+2. **Parse & Route** → Emit `RoomEvent` via `EventBus` to appropriate handlers
+3. **Event Processing** → Multiple subscribers react to events:
+   - `game/game_room_subscriber.rs` - Game logic (moves, turns, win conditions)
+   - `bot/bot_room_subscriber.rs` - Bot responses to game events
+   - `websockets/websocket_room_subscriber.rs` - WebSocket broadcasts
+4. **WebSocket Response** → Events trigger broadcasts to all players in room
 
-This separation allows game logic to be independent of WebSocket implementation.
+This separation allows game logic to be independent of WebSocket implementation and enables easy addition of bots and other event subscribers.
+
+## Bot System
+
+The backend includes AI bots for testing and single-player gameplay:
+- **Bot creation**: Add bots via REST endpoint `POST /room/{id}/bot/add`
+- **Bot strategy**: Basic strategy that plays valid moves automatically
+- **Event-driven**: Bots respond to `TurnChange` events with automatic moves
+- **Integration**: Bots appear as regular players to other clients

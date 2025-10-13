@@ -11,6 +11,10 @@ use crate::{
 
 use super::shared::{MessageBroadcaster, RoomQueryUtils};
 
+fn cards_to_strings(cards: &[Card]) -> Vec<String> {
+    cards.iter().map(|card| card.to_string()).collect()
+}
+
 pub struct GameEventHandlers {
     room_service: Arc<RoomService>,
     connection_manager: Arc<dyn ConnectionManager>,
@@ -38,28 +42,22 @@ impl GameEventHandlers {
 
         let current_player_turn = game.current_player_turn();
 
-        let last_played_cards = game.last_non_pass_cards();
-        let last_played_by = game.last_non_pass_player_uuid();
+        // Build card counts map for all players
+        let card_counts: std::collections::HashMap<String, usize> = game
+            .players()
+            .iter()
+            .map(|p| (p.uuid.clone(), p.cards.len()))
+            .collect();
 
         for player in game.players() {
             let player_message = WebSocketMessage::game_started(
                 current_player_turn.clone(),
-                player.cards.iter().map(|card| card.to_string()).collect(),
+                cards_to_strings(&player.cards),
                 game.players()
                     .iter()
                     .map(|player| player.uuid.clone())
                     .collect(),
-                if !last_played_cards.is_empty() {
-                    Some(
-                        last_played_cards
-                            .iter()
-                            .map(|card| card.to_string())
-                            .collect(),
-                    )
-                } else {
-                    None
-                },
-                last_played_by.clone(),
+                card_counts.clone(),
             );
 
             let message_json = serde_json::to_string(&player_message).map_err(|e| {
@@ -73,6 +71,16 @@ impl GameEventHandlers {
                 .send_to_player(&player.uuid, &message_json)
                 .await;
         }
+
+        // Notify subscribers whose turn it is so bots can act immediately
+        self.event_bus
+            .emit_to_room(
+                room_id,
+                RoomEvent::TurnChanged {
+                    player: current_player_turn,
+                },
+            )
+            .await;
 
         Ok(())
     }
@@ -144,9 +152,18 @@ impl GameEventHandlers {
             "Handling move played event"
         );
 
+        // Get the player who made the move to find their remaining card count
+        let remaining_cards = game
+            .players()
+            .iter()
+            .find(|p| p.uuid == player_uuid)
+            .map(|p| p.cards.len())
+            .unwrap_or(0);
+
         let player_message = WebSocketMessage::move_played(
             player_uuid.to_string(),
-            cards.iter().map(|card| card.to_string()).collect(),
+            cards_to_strings(cards),
+            remaining_cards,
         );
 
         let player_uuids: Vec<String> = game.players().iter().map(|p| p.uuid.clone()).collect();

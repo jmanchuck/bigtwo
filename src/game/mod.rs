@@ -1,6 +1,6 @@
 // Public API
-pub use cards::{Card, Rank, Suit};
-pub use core::Game;
+pub use cards::{Card, Hand, Rank, SingleHand, Suit};
+pub use core::{Game, Player};
 pub use game_room_subscriber::GameEventRoomSubscriber;
 pub use service::GameService;
 

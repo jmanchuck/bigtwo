@@ -20,6 +20,8 @@ pub enum MessageType {
     GameStarted,
     GameWon,
     GameReset,
+    BotAdded,
+    BotRemoved,
 }
 
 /// Metadata for WebSocket messages
@@ -62,6 +64,8 @@ pub struct PlayersListPayload {
     pub players: Vec<String>,
     /// Mapping from UUID to display name for UI resolution
     pub mapping: std::collections::HashMap<String, String>,
+    /// UUIDs of bot players in the room
+    pub bot_uuids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +77,7 @@ pub struct HostChangePayload {
 pub struct MovePlayedPayload {
     pub player: String,
     pub cards: Vec<String>,
+    pub remaining_cards: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,10 +90,7 @@ pub struct GameStartedPayload {
     pub current_turn: String,
     pub cards: Vec<String>, // Player's hand
     pub player_list: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_played_cards: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_played_by: Option<String>,
+    pub card_counts: std::collections::HashMap<String, usize>, // UUID -> card count
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +106,17 @@ pub struct GameWonPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameResetPayload {
     // Empty payload - just signals that game should reset to lobby
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BotAddedPayload {
+    pub bot_uuid: String,
+    pub bot_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BotRemovedPayload {
+    pub bot_uuid: String,
 }
 
 /// Helper functions for creating messages
@@ -123,8 +136,13 @@ impl WebSocketMessage {
     pub fn players_list(
         players: Vec<String>,
         mapping: std::collections::HashMap<String, String>,
+        bot_uuids: Vec<String>,
     ) -> Self {
-        let payload = PlayersListPayload { players, mapping };
+        let payload = PlayersListPayload {
+            players,
+            mapping,
+            bot_uuids,
+        };
         Self::new(
             MessageType::PlayersList,
             serde_json::to_value(payload).unwrap(),
@@ -151,15 +169,13 @@ impl WebSocketMessage {
         current_turn: String,
         cards: Vec<String>,
         player_list: Vec<String>,
-        last_played_cards: Option<Vec<String>>,
-        last_played_by: Option<String>,
+        card_counts: std::collections::HashMap<String, usize>,
     ) -> Self {
         let payload = GameStartedPayload {
             current_turn,
             cards,
             player_list,
-            last_played_cards,
-            last_played_by,
+            card_counts,
         };
         Self::new(
             MessageType::GameStarted,
@@ -168,8 +184,12 @@ impl WebSocketMessage {
     }
 
     /// Create a MOVE_PLAYED message
-    pub fn move_played(player: String, cards: Vec<String>) -> Self {
-        let payload = MovePlayedPayload { player, cards };
+    pub fn move_played(player: String, cards: Vec<String>, remaining_cards: usize) -> Self {
+        let payload = MovePlayedPayload {
+            player,
+            cards,
+            remaining_cards,
+        };
         Self::new(
             MessageType::MovePlayed,
             serde_json::to_value(payload).unwrap(),
@@ -214,6 +234,24 @@ impl WebSocketMessage {
             serde_json::to_value(payload).unwrap(),
         )
     }
+
+    /// Create a BOT_ADDED message
+    pub fn bot_added(bot_uuid: String, bot_name: String) -> Self {
+        let payload = BotAddedPayload { bot_uuid, bot_name };
+        Self::new(
+            MessageType::BotAdded,
+            serde_json::to_value(payload).unwrap(),
+        )
+    }
+
+    /// Create a BOT_REMOVED message
+    pub fn bot_removed(bot_uuid: String) -> Self {
+        let payload = BotRemovedPayload { bot_uuid };
+        Self::new(
+            MessageType::BotRemoved,
+            serde_json::to_value(payload).unwrap(),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -225,7 +263,7 @@ mod tests {
         // players_list
         let mut map = std::collections::HashMap::new();
         map.insert("u1".to_string(), "Alice".to_string());
-        let m = WebSocketMessage::players_list(vec!["u1".to_string()], map.clone());
+        let m = WebSocketMessage::players_list(vec!["u1".to_string()], map.clone(), vec![]);
         assert!(matches!(m.message_type, MessageType::PlayersList));
         let s = serde_json::to_string(&m).unwrap();
         let back: WebSocketMessage = serde_json::from_str(&s).unwrap();
@@ -240,17 +278,18 @@ mod tests {
         assert!(matches!(h.message_type, MessageType::HostChange));
 
         // game_started
+        let mut card_counts = std::collections::HashMap::new();
+        card_counts.insert("u1".to_string(), 13);
         let gs = WebSocketMessage::game_started(
             "u1".to_string(),
             vec!["3D".to_string()],
             vec!["u1".to_string()],
-            Some(vec!["4H".to_string()]),
-            Some("u2".to_string()),
+            card_counts,
         );
         assert!(matches!(gs.message_type, MessageType::GameStarted));
 
         // move_played
-        let mp = WebSocketMessage::move_played("u1".to_string(), vec!["3D".to_string()]);
+        let mp = WebSocketMessage::move_played("u1".to_string(), vec!["3D".to_string()], 12);
         assert!(matches!(mp.message_type, MessageType::MovePlayed));
 
         // chat
@@ -272,5 +311,13 @@ mod tests {
         // game_reset
         let gr = WebSocketMessage::game_reset();
         assert!(matches!(gr.message_type, MessageType::GameReset));
+
+        // bot_added
+        let ba = WebSocketMessage::bot_added("bot-123".to_string(), "Bot 1".to_string());
+        assert!(matches!(ba.message_type, MessageType::BotAdded));
+
+        // bot_removed
+        let br = WebSocketMessage::bot_removed("bot-123".to_string());
+        assert!(matches!(br.message_type, MessageType::BotRemoved));
     }
 }

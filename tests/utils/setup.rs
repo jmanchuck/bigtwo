@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 use bigtwo::{
+    bot::BotManager,
     event::{EventBus, RoomSubscription},
     game::{GameEventRoomSubscriber, GameService},
     room::{
@@ -26,12 +27,14 @@ pub struct TestSetup {
     pub game_service: Arc<GameService>,
     pub players: Vec<(String, String)>,
     pub _subscription_handle: JoinHandle<()>,
+    pub bot_manager: Arc<BotManager>,
 }
 
 pub struct TestSetupBuilder {
     /// (uuid, playername) pairs
     players: Vec<(String, String)>,
     room_id: String,
+    bot_manager: Arc<BotManager>,
 }
 
 impl TestSetupBuilder {
@@ -39,6 +42,7 @@ impl TestSetupBuilder {
         Self {
             players: vec![],
             room_id: "room-123".to_string(),
+            bot_manager: Arc::new(BotManager::new()),
         }
     }
 
@@ -87,6 +91,7 @@ impl TestSetupBuilder {
         let mock_conn_manager = Arc::new(MockConnectionManager::new());
         let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
         let game_service = Arc::new(GameService::new(player_mapping.clone()));
+        let bot_manager = Arc::clone(&self.bot_manager);
 
         // Create room
         let room = RoomModel {
@@ -137,6 +142,7 @@ impl TestSetupBuilder {
             game_service.clone(),
             player_mapping.clone(),
             event_bus.clone(),
+            Arc::clone(&bot_manager),
         );
 
         let subscription = RoomSubscription::new(
@@ -156,6 +162,7 @@ impl TestSetupBuilder {
             game_service,
             players: self.players,
             _subscription_handle: subscription_handle,
+            bot_manager,
         }
     }
 }

@@ -39,4 +39,8 @@ pub enum RoomEvent {
     GameWon { winner: String },
     /// Game reset to lobby (after win countdown)
     GameReset,
+    /// A bot was added to the room
+    BotAdded { bot_uuid: String, bot_name: String },
+    /// A bot was removed from the room
+    BotRemoved { bot_uuid: String },
 }
