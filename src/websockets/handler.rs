@@ -409,17 +409,25 @@ async fn handle_websocket_connection(
                         debug!(
                             room_id = %room_id,
                             username = %username,
-                            "Sent hydration MOVE_PLAYED (last table state) to reconnecting player"
+                            "Sent game hydration GAME_STARTED to reconnecting player"
                         );
                     }
                 }
+                Err(error) => {
+                    warn!(
+                        room_id = %room_id,
+                        username = %username,
+                        ?error,
+                        "Failed to serialize game hydration message"
+                    );
+                }
             }
         } else {
-            debug!(
+            warn!(
                 room_id = %room_id,
                 username = %username,
                 player_uuid = %player_uuid,
-                "Player not found in active game - not sending hydration"
+                "Reconnecting player UUID not present in active game"
             );
         }
     }
