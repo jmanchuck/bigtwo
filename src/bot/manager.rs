@@ -29,7 +29,7 @@ impl BotManager {
         room_id: String,
         difficulty: BotDifficulty,
     ) -> Result<BotPlayer, AppError> {
-        // Generate a unique bot name based on current bot count in the room
+        // Check bot count limit first
         let bot_count = self.get_bots_in_room(&room_id).await.len();
 
         if bot_count >= MAX_BOTS_PER_ROOM {
@@ -38,7 +38,10 @@ impl BotManager {
                 room_id, MAX_BOTS_PER_ROOM
             )));
         }
-        let bot_name = format!("Bot {}", bot_count + 1);
+
+        // Generate a unique bot name using petnames
+        let petname = petname::Petnames::default().generate_one(2, "-");
+        let bot_name = format!("{} Bot", petname);
 
         let bot = BotPlayer::new(room_id, bot_name, difficulty);
 
@@ -142,7 +145,8 @@ mod tests {
             .unwrap();
 
         assert!(bot.uuid.starts_with("bot-"));
-        assert_eq!(bot.name, "Bot 1");
+        assert!(bot.name.ends_with(" Bot"));
+        assert!(bot.name.contains('-')); // petname format includes dash
         assert_eq!(bot.room_id, "room1");
         assert_eq!(bot.difficulty, BotDifficulty::Easy);
     }
@@ -242,8 +246,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(bot1.name, "Bot 1");
-        assert_eq!(bot2.name, "Bot 2");
+        // Both should have " Bot" suffix and petname format
+        assert!(bot1.name.ends_with(" Bot"));
+        assert!(bot2.name.ends_with(" Bot"));
+        assert!(bot1.name.contains('-'));
+        assert!(bot2.name.contains('-'));
+        // Names should be unique (very high probability with petnames)
+        assert_ne!(bot1.name, bot2.name);
     }
 
     #[tokio::test]

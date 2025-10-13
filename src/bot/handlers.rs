@@ -307,13 +307,13 @@ mod tests {
     async fn test_bot_response_serialization() {
         let response = BotResponse {
             uuid: "bot-123".to_string(),
-            name: "Bot 1".to_string(),
+            name: "happy-turtle Bot".to_string(),
             difficulty: BotDifficulty::Medium,
         };
 
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("bot-123"));
-        assert!(json.contains("Bot 1"));
+        assert!(json.contains("happy-turtle Bot"));
         assert!(json.contains("medium"));
     }
 
