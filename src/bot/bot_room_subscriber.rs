@@ -1,21 +1,20 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
     game::GameService,
 };
 
-use super::{basic_strategy::BasicBotStrategy, manager::BotManager, types::BotStrategy};
+use super::{manager::BotManager, strategy_factory::BotStrategyFactory};
 
 /// Event subscriber that handles bot actions in response to game events
 pub struct BotRoomSubscriber {
     bot_manager: Arc<BotManager>,
     game_service: Arc<GameService>,
     event_bus: EventBus,
-    strategy: Arc<dyn BotStrategy>,
 }
 
 impl BotRoomSubscriber {
@@ -28,7 +27,6 @@ impl BotRoomSubscriber {
             bot_manager,
             game_service,
             event_bus,
-            strategy: Arc::new(BasicBotStrategy::new()),
         }
     }
 
@@ -48,65 +46,95 @@ impl BotRoomSubscriber {
             return Ok(());
         }
 
+        // Get the bot to retrieve its difficulty
+        let bot = self.bot_manager.get_bot(player_uuid).await.ok_or_else(|| {
+            RoomEventError::HandlerError(format!("Bot not found: {}", player_uuid))
+        })?;
+
         info!(
             room_id = %room_id,
             bot_uuid = %player_uuid,
+            difficulty = ?bot.difficulty,
             "Bot's turn detected, deciding move"
         );
 
         // Get the current game state
-        let game = self
-            .game_service
-            .get_game(room_id)
-            .await
-            .ok_or_else(|| RoomEventError::HandlerError("Game not found".to_string()))?;
+        let game = match self.game_service.get_game(room_id).await {
+            Some(game) => game,
+            None => {
+                debug!(
+                    room_id = %room_id,
+                    bot_uuid = %player_uuid,
+                    "Game not found (possibly deleted or reset), skipping bot move"
+                );
+                return Ok(());
+            }
+        };
+
+        // Verify it's still the bot's turn (guard against race conditions)
+        if game.current_player_turn() != player_uuid {
+            debug!(
+                room_id = %room_id,
+                bot_uuid = %player_uuid,
+                current_turn = %game.current_player_turn(),
+                "Turn changed before bot could act, skipping move"
+            );
+            return Ok(());
+        }
 
         // Add a small delay to simulate human thinking (100-500ms random)
         let delay_ms = 100 + (rand::random::<u64>() % 400);
         sleep(Duration::from_millis(delay_ms)).await;
 
-        // Use strategy to decide on a move
-        let move_decision = self.strategy.decide_move(&game, player_uuid).await;
+        // Get strategy based on bot difficulty
+        let strategy = BotStrategyFactory::create_strategy(bot.difficulty);
 
-        match move_decision {
-            Some(cards) => {
-                info!(
+        // Use strategy to decide on a move with error handling
+        let move_decision = match tokio::time::timeout(
+            Duration::from_secs(5),
+            strategy.decide_move(&game, player_uuid),
+        )
+        .await
+        {
+            Ok(decision) => decision,
+            Err(_) => {
+                error!(
                     room_id = %room_id,
                     bot_uuid = %player_uuid,
-                    cards = ?cards,
-                    "Bot decided to play cards"
+                    "Bot strategy timed out after 5 seconds, forcing pass"
                 );
-
-                // Emit a TryPlayMove event
-                self.event_bus
-                    .emit_to_room(
-                        room_id,
-                        RoomEvent::TryPlayMove {
-                            player: player_uuid.to_string(),
-                            cards,
-                        },
-                    )
-                    .await;
+                None
             }
-            None => {
-                info!(
-                    room_id = %room_id,
-                    bot_uuid = %player_uuid,
-                    "Bot decided to pass"
-                );
+        };
 
-                // Emit a TryPlayMove event with empty cards (pass)
-                self.event_bus
-                    .emit_to_room(
-                        room_id,
-                        RoomEvent::TryPlayMove {
-                            player: player_uuid.to_string(),
-                            cards: vec![],
-                        },
-                    )
-                    .await;
-            }
+        // Determine cards to play (empty array for pass)
+        let cards = move_decision.unwrap_or_else(Vec::new);
+
+        if cards.is_empty() {
+            info!(
+                room_id = %room_id,
+                bot_uuid = %player_uuid,
+                "Bot passing (no valid moves or strategic pass)"
+            );
+        } else {
+            info!(
+                room_id = %room_id,
+                bot_uuid = %player_uuid,
+                cards = ?cards,
+                "Bot playing cards"
+            );
         }
+
+        // Emit a TryPlayMove event (with empty cards array if passing)
+        self.event_bus
+            .emit_to_room(
+                room_id,
+                RoomEvent::TryPlayMove {
+                    player: player_uuid.to_string(),
+                    cards,
+                },
+            )
+            .await;
 
         Ok(())
     }
@@ -165,7 +193,10 @@ mod tests {
 
         // Create a bot
         let bot = bot_manager
-            .create_bot("room1".to_string(), super::super::types::BotDifficulty::Easy)
+            .create_bot(
+                "room1".to_string(),
+                super::super::types::BotDifficulty::Easy,
+            )
             .await
             .unwrap();
 
@@ -176,7 +207,11 @@ mod tests {
 
         // Create a simple game with the bot
         let player_data = vec![
-            (bot.name.clone(), bot.uuid.clone(), vec![Card::new(Rank::Three, Suit::Diamonds)]),
+            (
+                bot.name.clone(),
+                bot.uuid.clone(),
+                vec![Card::new(Rank::Three, Suit::Diamonds)],
+            ),
             (
                 "Human".to_string(),
                 "human-123".to_string(),

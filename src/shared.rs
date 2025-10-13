@@ -162,7 +162,9 @@ impl AppStateBuilder {
             return Err(AppStateBuilderError::MissingDependency("room_service"));
         };
 
-        let bot_manager = self.bot_manager.unwrap_or_else(|| Arc::new(BotManager::new()));
+        let bot_manager = self
+            .bot_manager
+            .unwrap_or_else(|| Arc::new(BotManager::new()));
 
         Ok(AppState {
             session_service,
@@ -210,7 +212,9 @@ impl AppStateBuilder {
             .connection_manager
             .unwrap_or_else(|| Arc::new(crate::websockets::InMemoryConnectionManager::new()));
 
-        let bot_manager = self.bot_manager.unwrap_or_else(|| Arc::new(BotManager::new()));
+        let bot_manager = self
+            .bot_manager
+            .unwrap_or_else(|| Arc::new(BotManager::new()));
 
         AppState {
             session_service,

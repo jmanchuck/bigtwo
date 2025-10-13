@@ -7,9 +7,9 @@ use crate::game::{Card, Game};
 /// Represents a bot player in the game
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BotPlayer {
-    pub uuid: String,        // Bot UUID with "bot-" prefix
-    pub name: String,        // Display name (e.g., "Bot 1")
-    pub room_id: String,     // Room the bot belongs to
+    pub uuid: String,    // Bot UUID with "bot-" prefix
+    pub name: String,    // Display name (e.g., "Bot 1")
+    pub room_id: String, // Room the bot belongs to
     pub difficulty: BotDifficulty,
 }
 

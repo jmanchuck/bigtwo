@@ -3,6 +3,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     event::RoomEventError,
+    game::Card,
     room::service::RoomService,
     user::PlayerMappingService,
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
@@ -27,6 +28,10 @@ impl RoomEventHandlers {
             connection_manager,
             player_mapping,
         }
+    }
+
+    fn cards_to_strings(cards: &[Card]) -> Vec<String> {
+        cards.iter().map(|c| c.to_string()).collect()
     }
 
     pub async fn handle_player_joined(&self, room_id: &str) -> Result<(), RoomEventError> {
@@ -147,6 +152,111 @@ impl RoomEventHandlers {
             new_host_uuid = %new_host_uuid,
             players_notified = room.get_player_uuids().len(),
             "Host change notification sent to all room players"
+        );
+
+        Ok(())
+    }
+
+    pub async fn handle_bot_added(
+        &self,
+        room_id: &str,
+        bot_uuid: &str,
+        bot_name: &str,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            bot_uuid = %bot_uuid,
+            bot_name = %bot_name,
+            "Handling bot added event"
+        );
+
+        let room = RoomQueryUtils::get_room_or_error(&self.room_service, room_id).await?;
+
+        // Send BOT_ADDED message to all players
+        let bot_added_message =
+            WebSocketMessage::bot_added(bot_uuid.to_string(), bot_name.to_string());
+        MessageBroadcaster::broadcast_to_players(
+            &self.connection_manager,
+            room.get_player_uuids(),
+            &bot_added_message,
+        )
+        .await?;
+
+        // Send updated PLAYERS_LIST message
+        let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
+            &self.player_mapping,
+            room.get_player_uuids(),
+        )
+        .await;
+
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        MessageBroadcaster::broadcast_to_players(
+            &self.connection_manager,
+            room.get_player_uuids(),
+            &players_list_message,
+        )
+        .await?;
+
+        info!(
+            room_id = %room_id,
+            bot_uuid = %bot_uuid,
+            players_notified = room.get_player_uuids().len(),
+            "Bot added notification sent to all room players"
+        );
+
+        Ok(())
+    }
+
+    pub async fn handle_bot_removed(
+        &self,
+        room_id: &str,
+        bot_uuid: &str,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            bot_uuid = %bot_uuid,
+            "Handling bot removed event"
+        );
+
+        let room = match RoomQueryUtils::get_room_if_exists(&self.room_service, room_id).await? {
+            Some(room) => room,
+            None => {
+                debug!(room_id = %room_id, "Room was deleted, no notifications needed");
+                return Ok(());
+            }
+        };
+
+        // Send BOT_REMOVED message to all players
+        let bot_removed_message = WebSocketMessage::bot_removed(bot_uuid.to_string());
+        MessageBroadcaster::broadcast_to_players(
+            &self.connection_manager,
+            room.get_player_uuids(),
+            &bot_removed_message,
+        )
+        .await?;
+
+        // Send updated PLAYERS_LIST message
+        let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
+            &self.player_mapping,
+            room.get_player_uuids(),
+        )
+        .await;
+
+        let players_list_message =
+            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping);
+        MessageBroadcaster::broadcast_to_players(
+            &self.connection_manager,
+            room.get_player_uuids(),
+            &players_list_message,
+        )
+        .await?;
+
+        info!(
+            room_id = %room_id,
+            bot_uuid = %bot_uuid,
+            players_notified = room.get_player_uuids().len(),
+            "Bot removed notification sent to all room players"
         );
 
         Ok(())

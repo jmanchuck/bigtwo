@@ -1,4 +1,7 @@
-use axum::{extract::{Path, State}, Extension, Json};
+use axum::{
+    extract::{Path, State},
+    Extension, Json,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -87,17 +90,38 @@ pub async fn add_bot_to_room(
         .await?;
 
     // Register the bot in player mapping
-    state
+    if let Err(e) = state
         .player_mapping
         .register_player(bot.uuid.clone(), bot.name.clone())
         .await
-        .map_err(|_e| AppError::Internal)?;
+    {
+        warn!(
+            room_id = %room_id,
+            bot_uuid = %bot.uuid,
+            error = %e,
+            "Failed to register bot in player mapping, cleaning up bot"
+        );
+        // Clean up the bot that was created
+        let _ = state.bot_manager.remove_bot(&bot.uuid).await;
+        return Err(AppError::Internal);
+    }
 
     // Add the bot to the room
-    state
+    if let Err(e) = state
         .room_service
         .join_room(room_id.clone(), bot.uuid.clone())
-        .await?;
+        .await
+    {
+        warn!(
+            room_id = %room_id,
+            bot_uuid = %bot.uuid,
+            error = %e,
+            "Failed to add bot to room, cleaning up"
+        );
+        // Clean up the bot and mapping
+        let _ = state.bot_manager.remove_bot(&bot.uuid).await;
+        return Err(e);
+    }
 
     // Emit PlayerJoined event
     state
@@ -106,6 +130,18 @@ pub async fn add_bot_to_room(
             &room_id,
             RoomEvent::PlayerJoined {
                 player: bot.uuid.clone(),
+            },
+        )
+        .await;
+
+    // Emit BotAdded event for WebSocket notification
+    state
+        .event_bus
+        .emit_to_room(
+            &room_id,
+            RoomEvent::BotAdded {
+                bot_uuid: bot.uuid.clone(),
+                bot_name: bot.name.clone(),
             },
         )
         .await;
@@ -195,6 +231,17 @@ pub async fn remove_bot_from_room(
             &room_id,
             RoomEvent::PlayerLeft {
                 player: bot_uuid.clone(),
+            },
+        )
+        .await;
+
+    // Emit BotRemoved event for WebSocket notification
+    state
+        .event_bus
+        .emit_to_room(
+            &room_id,
+            RoomEvent::BotRemoved {
+                bot_uuid: bot_uuid.clone(),
             },
         )
         .await;

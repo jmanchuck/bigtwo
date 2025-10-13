@@ -139,10 +139,9 @@ async fn main() {
         )
         .route(
             "/room/:room_id/bot/:bot_uuid",
-            axum::routing::delete(bot::handlers::remove_bot_from_room).layer(middleware::from_fn_with_state(
-                app_state.clone(),
-                session::jwt_auth,
-            )),
+            axum::routing::delete(bot::handlers::remove_bot_from_room).layer(
+                middleware::from_fn_with_state(app_state.clone(), session::jwt_auth),
+            ),
         )
         .route("/ws/:room_id", get(websockets::websocket_handler))
         .layer(cors)

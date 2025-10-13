@@ -58,7 +58,9 @@ impl InMemoryPlayerMappingService {
 
     /// Validate UUID format
     fn validate_uuid(uuid: &str) -> Result<(), MappingError> {
-        Uuid::parse_str(uuid).map_err(|_| MappingError::InvalidUuid {
+        let uuid_to_validate = uuid.strip_prefix("bot-").unwrap_or(uuid);
+
+        Uuid::parse_str(uuid_to_validate).map_err(|_| MappingError::InvalidUuid {
             uuid: uuid.to_string(),
         })?;
         Ok(())
@@ -210,6 +212,22 @@ mod tests {
             .register_player("invalid-uuid".to_string(), "player".to_string())
             .await;
         assert!(matches!(result, Err(MappingError::InvalidUuid { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_register_bot_uuid() {
+        let service = InMemoryPlayerMappingService::new();
+        let bot_uuid = format!("bot-{}", Uuid::new_v4());
+
+        let result = service
+            .register_player(bot_uuid.clone(), "bot-player".to_string())
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(
+            service.get_playername(&bot_uuid).await,
+            Some("bot-player".to_string())
+        );
     }
 
     #[tokio::test]

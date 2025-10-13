@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
+    bot::BotManager,
     event::{EventBus, RoomEvent, RoomEventError},
     room::{repository::LeaveRoomResult, service::RoomService},
     user::PlayerMappingService,
@@ -13,6 +14,7 @@ pub struct ConnectionEventHandlers {
     connection_manager: Arc<dyn ConnectionManager>,
     player_mapping: Arc<dyn PlayerMappingService>,
     event_bus: EventBus,
+    bot_manager: Arc<BotManager>,
 }
 
 impl ConnectionEventHandlers {
@@ -21,12 +23,14 @@ impl ConnectionEventHandlers {
         connection_manager: Arc<dyn ConnectionManager>,
         player_mapping: Arc<dyn PlayerMappingService>,
         event_bus: EventBus,
+        bot_manager: Arc<BotManager>,
     ) -> Self {
         Self {
             room_service,
             connection_manager,
             player_mapping,
             event_bus,
+            bot_manager,
         }
     }
 
@@ -89,8 +93,17 @@ impl ConnectionEventHandlers {
                 info!(
                     room_id = %room_id,
                     player_uuid = %player_uuid,
-                    "Room deleted after player left"
+                    "Room deleted after player left, cleaning up bots"
                 );
+
+                // Clean up all bots in the room
+                if let Err(e) = self.bot_manager.remove_all_bots_in_room(room_id).await {
+                    info!(
+                        room_id = %room_id,
+                        error = %e,
+                        "Failed to clean up bots, but room is already deleted"
+                    );
+                }
             }
             Ok(_) => {
                 info!(

@@ -11,6 +11,10 @@ use crate::{
 
 use super::shared::{MessageBroadcaster, RoomQueryUtils};
 
+fn cards_to_strings(cards: &[Card]) -> Vec<String> {
+    cards.iter().map(|card| card.to_string()).collect()
+}
+
 pub struct GameEventHandlers {
     room_service: Arc<RoomService>,
     connection_manager: Arc<dyn ConnectionManager>,
@@ -41,7 +45,7 @@ impl GameEventHandlers {
         for player in game.players() {
             let player_message = WebSocketMessage::game_started(
                 current_player_turn.clone(),
-                player.cards.iter().map(|card| card.to_string()).collect(),
+                cards_to_strings(&player.cards),
                 game.players()
                     .iter()
                     .map(|player| player.uuid.clone())
@@ -59,6 +63,16 @@ impl GameEventHandlers {
                 .send_to_player(&player.uuid, &message_json)
                 .await;
         }
+
+        // Notify subscribers whose turn it is so bots can act immediately
+        self.event_bus
+            .emit_to_room(
+                room_id,
+                RoomEvent::TurnChanged {
+                    player: current_player_turn,
+                },
+            )
+            .await;
 
         Ok(())
     }
@@ -130,10 +144,8 @@ impl GameEventHandlers {
             "Handling move played event"
         );
 
-        let player_message = WebSocketMessage::move_played(
-            player_uuid.to_string(),
-            cards.iter().map(|card| card.to_string()).collect(),
-        );
+        let player_message =
+            WebSocketMessage::move_played(player_uuid.to_string(), cards_to_strings(cards));
 
         let player_uuids: Vec<String> = game.players().iter().map(|p| p.uuid.clone()).collect();
         MessageBroadcaster::broadcast_to_players(

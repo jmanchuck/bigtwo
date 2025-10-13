@@ -112,6 +112,16 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                 self.game_handlers.handle_game_won(room_id, &winner).await
             }
             RoomEvent::GameReset => self.game_handlers.handle_game_reset(room_id).await,
+            RoomEvent::BotAdded { bot_uuid, bot_name } => {
+                self.room_handlers
+                    .handle_bot_added(room_id, &bot_uuid, &bot_name)
+                    .await
+            }
+            RoomEvent::BotRemoved { bot_uuid } => {
+                self.room_handlers
+                    .handle_bot_removed(room_id, &bot_uuid)
+                    .await
+            }
             _ => {
                 info!(
                     room_id = %room_id,
@@ -135,6 +145,7 @@ impl WebSocketRoomSubscriber {
         game_service: Arc<GameService>,
         player_mapping: Arc<dyn PlayerMappingService>,
         event_bus: crate::event::EventBus,
+        bot_manager: Arc<crate::bot::BotManager>,
     ) -> Self {
         let room_handlers = RoomEventHandlers::new(
             Arc::clone(&room_service),
@@ -157,6 +168,7 @@ impl WebSocketRoomSubscriber {
             Arc::clone(&connection_manager),
             Arc::clone(&player_mapping),
             event_bus.clone(),
+            bot_manager,
         );
 
         Self {
