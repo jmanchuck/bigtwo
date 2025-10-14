@@ -47,23 +47,27 @@ async fn main() {
     // Create shared application state with dependency injection
     // Smart configuration: Use PostgreSQL if DATABASE_URL is set, otherwise in-memory
     let session_repository: Arc<dyn SessionRepository + Send + Sync> =
-        if let Ok(database_url) = std::env::var("DATABASE_URL") {
-            info!("Using PostgreSQL session storage (persistent across restarts)");
-            match sqlx::PgPool::connect(&database_url).await {
-                Ok(pool) => {
-                    info!("✅ Connected to PostgreSQL successfully");
-                    Arc::new(PostgresSessionRepository::new(pool))
-                }
-                Err(e) => {
-                    warn!("❌ Failed to connect to PostgreSQL: {}", e);
-                    info!("🔄 Falling back to in-memory session storage");
-                    Arc::new(InMemorySessionRepository::new())
+        match std::env::var("DATABASE_URL") {
+            Ok(database_url) => {
+                info!("Using PostgreSQL session storage (persistent across restarts)");
+                match sqlx::PgPool::connect(&database_url).await {
+                    Ok(pool) => {
+                        info!("✅ Connected to PostgreSQL successfully");
+                        Arc::new(PostgresSessionRepository::new(pool))
+                    }
+                    Err(e) => {
+                        warn!("❌ Failed to connect to PostgreSQL: {}", e);
+                        info!("🔄 Falling back to in-memory session storage");
+                        Arc::new(InMemorySessionRepository::new())
+                    }
                 }
             }
-        } else {
-            info!("Using in-memory session storage (sessions lost on restart)");
-            info!("💡 Set DATABASE_URL to use PostgreSQL for persistent sessions");
-            Arc::new(InMemorySessionRepository::new())
+            Err(e) => {
+                info!("Error getting DATABASE_URL: {}", e);
+                info!("Using in-memory session storage (sessions lost on restart)");
+                info!("💡 Set DATABASE_URL to use PostgreSQL for persistent sessions");
+                Arc::new(InMemorySessionRepository::new())
+            }
         };
 
     let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
