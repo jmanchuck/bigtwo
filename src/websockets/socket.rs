@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use axum::extract::ws::{Message, WebSocket};
-use futures::stream::StreamExt;
+use futures::{stream::StreamExt, SinkExt};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -41,12 +41,27 @@ impl SocketWrapper for WebSocket {
     }
 
     async fn receive_message(&mut self) -> Result<Option<String>, SocketError> {
-        match self.next().await {
-            Some(Ok(Message::Text(text))) => Ok(Some(text)),
-            Some(Ok(Message::Close(_))) => Ok(None),
-            Some(Ok(_)) => Ok(None), // Ignore binary/ping/pong
-            Some(Err(e)) => Err(SocketError::ReceiveFailed(e.to_string())),
-            None => Ok(None), // Connection closed
+        loop {
+            match self.next().await {
+                Some(Ok(Message::Text(text))) => return Ok(Some(text)),
+                Some(Ok(Message::Binary(_))) => {
+                    // Ignore unsupported binary messages
+                    continue;
+                }
+                Some(Ok(Message::Ping(payload))) => {
+                    if let Err(e) = self.send(Message::Pong(payload)).await {
+                        return Err(SocketError::SendFailed(e.to_string()));
+                    }
+                    continue;
+                }
+                Some(Ok(Message::Pong(_))) => {
+                    // Heartbeat acknowledgement - nothing to do
+                    continue;
+                }
+                Some(Ok(Message::Close(_))) => return Ok(None),
+                Some(Err(e)) => return Err(SocketError::ReceiveFailed(e.to_string())),
+                None => return Ok(None), // Connection closed
+            }
         }
     }
 
