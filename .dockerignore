@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+.github
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation and test files
+*.md
+CLAUDE.md
+README.md
+DEVELOPMENT.md
+DATABASE_SETUP.md
+GAME_REQUIREMENTS.md
+GameLobbyModel.md
+GameModel.md
+rust.mdc
+
+# Development scripts
+scripts/dev.sh
+scripts/test-session.sh
+docker-compose.dev.yml
+
+# Test files
+tests/
+*.test
+
+# Environment files (will be set via Railway)
+.env
+.env.*
+
+# Claude
+.claude/

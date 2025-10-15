@@ -47,23 +47,27 @@ async fn main() {
     // Create shared application state with dependency injection
     // Smart configuration: Use PostgreSQL if DATABASE_URL is set, otherwise in-memory
     let session_repository: Arc<dyn SessionRepository + Send + Sync> =
-        if let Ok(database_url) = std::env::var("DATABASE_URL") {
-            info!("Using PostgreSQL session storage (persistent across restarts)");
-            match sqlx::PgPool::connect(&database_url).await {
-                Ok(pool) => {
-                    info!("✅ Connected to PostgreSQL successfully");
-                    Arc::new(PostgresSessionRepository::new(pool))
-                }
-                Err(e) => {
-                    warn!("❌ Failed to connect to PostgreSQL: {}", e);
-                    info!("🔄 Falling back to in-memory session storage");
-                    Arc::new(InMemorySessionRepository::new())
+        match std::env::var("DATABASE_URL") {
+            Ok(database_url) => {
+                info!("Using PostgreSQL session storage (persistent across restarts)");
+                match sqlx::PgPool::connect(&database_url).await {
+                    Ok(pool) => {
+                        info!("✅ Connected to PostgreSQL successfully");
+                        Arc::new(PostgresSessionRepository::new(pool))
+                    }
+                    Err(e) => {
+                        warn!("❌ Failed to connect to PostgreSQL: {}", e);
+                        info!("🔄 Falling back to in-memory session storage");
+                        Arc::new(InMemorySessionRepository::new())
+                    }
                 }
             }
-        } else {
-            info!("Using in-memory session storage (sessions lost on restart)");
-            info!("💡 Set DATABASE_URL to use PostgreSQL for persistent sessions");
-            Arc::new(InMemorySessionRepository::new())
+            Err(e) => {
+                info!("Error getting DATABASE_URL: {}", e);
+                info!("Using in-memory session storage (sessions lost on restart)");
+                info!("💡 Set DATABASE_URL to use PostgreSQL for persistent sessions");
+                Arc::new(InMemorySessionRepository::new())
+            }
         };
 
     let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
@@ -91,12 +95,20 @@ async fn main() {
         .build()
         .expect("Failed to build AppState - all required dependencies should be provided");
 
-    // Configure CORS for development
+    // Configure CORS for development and production
+    // Allow origins from environment variable for production, fallback to localhost for dev
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS")
+        .unwrap_or_else(|_| "https://localhost:5173,http://localhost:5173".to_string());
+
+    let origins: Vec<HeaderValue> = allowed_origins
+        .split(',')
+        .filter_map(|origin| origin.trim().parse::<HeaderValue>().ok())
+        .collect();
+
+    info!("Allowed CORS origins: {:?}", origins);
+
     let cors = CorsLayer::new()
-        .allow_origin([
-            "https://localhost:5173".parse::<HeaderValue>().unwrap(),
-            "http://localhost:5173".parse::<HeaderValue>().unwrap(),
-        ])
+        .allow_origin(origins)
         .allow_methods([Method::GET, Method::POST, Method::DELETE])
         .allow_headers([
             axum::http::header::CONTENT_TYPE,
@@ -106,6 +118,7 @@ async fn main() {
     // build our application with a single route
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
+        .route("/health", get(|| async { "OK" }))
         .route("/session", post(session::create_session))
         .route(
             "/session/validate",
@@ -148,8 +161,12 @@ async fn main() {
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    info!("Server running on http://localhost:3000");
+    // Run our app with hyper, listening globally on configured port
+    // Railway provides PORT env var, default to 3000 for local development
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    info!("Server running on {}", addr);
     axum::serve(listener, app).await.unwrap();
 }
