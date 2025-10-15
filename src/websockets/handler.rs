@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use axum::{
     extract::{Path, State, WebSocketUpgrade},
-    http::HeaderMap,
+    http::{header::SEC_WEBSOCKET_PROTOCOL, HeaderMap, HeaderValue},
     response::Response,
 };
 use std::sync::Arc;
@@ -241,17 +241,18 @@ pub async fn websocket_handler(
 
     // Extract JWT from Sec-WebSocket-Protocol header
     let jwt_token = headers
-        .get("sec-websocket-protocol")
+        .get(SEC_WEBSOCKET_PROTOCOL)
         .and_then(|h| h.to_str().ok())
         .ok_or_else(|| {
             warn!("Missing or invalid Sec-WebSocket-Protocol header");
             AppError::Unauthorized("Missing authentication token".to_string())
-        })?;
+        })?
+        .to_string();
 
     // Validate JWT token and get username from claims
     let claims = app_state
         .session_service
-        .validate_session(jwt_token)
+        .validate_session(&jwt_token)
         .await?;
     let username = claims.username.clone();
 
@@ -276,9 +277,20 @@ pub async fn websocket_handler(
         username = %username,
         "Room verified, establishing WebSocket connection"
     );
-    Ok(ws.on_upgrade(move |socket| {
+    let protocol_header_value = HeaderValue::from_str(&jwt_token).map_err(|e| {
+        warn!(error = %e, "Invalid Sec-WebSocket-Protocol header value");
+        AppError::Unauthorized("Invalid authentication token".to_string())
+    })?;
+
+    let mut response = ws.on_upgrade(move |socket| {
         handle_websocket_connection(socket, room_id, username, claims.session_id, app_state)
-    }))
+    });
+
+    response
+        .headers_mut()
+        .insert(SEC_WEBSOCKET_PROTOCOL, protocol_header_value);
+
+    Ok(response)
 }
 
 /// Handle the upgraded WebSocket connection
