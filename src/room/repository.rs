@@ -206,6 +206,18 @@ impl RoomRepository for InMemoryRoomRepository {
             return Ok(LeaveRoomResult::RoomDeleted);
         }
 
+        // If only bots remain, delete the room
+        let only_bots_remain = room
+            .player_uuids
+            .iter()
+            .all(|uuid| crate::bot::types::BotPlayer::is_bot_uuid(uuid));
+
+        if only_bots_remain {
+            info!(room_id = %room_id, "Only bots remain in room, deleting");
+            rooms.remove(room_id);
+            return Ok(LeaveRoomResult::RoomDeleted);
+        }
+
         // If the leaving player was the host, assign new host to first remaining player
         if room.host_uuid.is_some() && room.host_uuid.as_ref().unwrap() == player_uuid {
             if let Some(new_host) = room.player_uuids.first().cloned() {
@@ -525,5 +537,73 @@ mod tests {
         room.remove_player("player2");
         assert_eq!(room.get_player_count(), 0);
         assert!(!room.has_player("player2"));
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_with_only_bots_remaining_deletes_room() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "human-player");
+        room.add_player("bot-12345".to_string());
+        room.add_player("bot-67890".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Human player leaves, only bots remain
+        let result = repo.leave_room("test-room", "human-player").await.unwrap();
+
+        // Room should be deleted because only bots remain
+        assert!(matches!(result, LeaveRoomResult::RoomDeleted));
+
+        // Verify room is deleted
+        let room_check = repo.get_room("test-room").await.unwrap();
+        assert!(room_check.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_with_bots_and_humans_remaining_does_not_delete() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "human1");
+        room.add_player("human2".to_string());
+        room.add_player("bot-12345".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // One human leaves, another human and bot remain
+        let result = repo.leave_room("test-room", "human1").await.unwrap();
+
+        // Room should not be deleted because a human remains
+        match result {
+            LeaveRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 2);
+                assert!(updated_room.has_player("human2"));
+                assert!(updated_room.has_player("bot-12345"));
+            }
+            _ => panic!("Expected success, got {:?}", result),
+        }
+
+        // Verify room still exists
+        let room_check = repo.get_room("test-room").await.unwrap();
+        assert!(room_check.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_bot_leaves_humans_remain() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "human1");
+        room.add_player("human2".to_string());
+        room.add_player("bot-12345".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Bot leaves, humans remain
+        let result = repo.leave_room("test-room", "bot-12345").await.unwrap();
+
+        // Room should not be deleted because humans remain
+        match result {
+            LeaveRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 2);
+                assert!(updated_room.has_player("human1"));
+                assert!(updated_room.has_player("human2"));
+                assert!(!updated_room.has_player("bot-12345"));
+            }
+            _ => panic!("Expected success, got {:?}", result),
+        }
     }
 }
