@@ -151,7 +151,7 @@ impl RoomEventHandler for BotRoomSubscriber {
             RoomEvent::TurnChanged { player } => {
                 self.handle_turn_changed(room_id, &player).await?;
             }
-            RoomEvent::GameWon { winner } => {
+            RoomEvent::GameWon { winner, .. } => {
                 if self.bot_manager.is_bot(&winner).await {
                     info!(
                         room_id = %room_id,

@@ -35,8 +35,12 @@ impl RoomEventHandler for GameEventRoomSubscriber {
                 self.handle_player_played_move(room_id, &player, &cards)
                     .await?;
             }
-            RoomEvent::GameWon { winner } => {
-                self.handle_game_won(room_id, &winner).await?;
+            RoomEvent::GameWon {
+                winner,
+                winning_hand,
+            } => {
+                self.handle_game_won(room_id, &winner, &winning_hand)
+                    .await?;
             }
             RoomEvent::GameReset => {
                 self.handle_game_reset(room_id).await?;
@@ -97,11 +101,13 @@ impl GameEventRoomSubscriber {
 
         // If player won, emit GameWon event and return
         if move_result.player_won {
+            let winning_hand = move_result.winning_hand.unwrap_or_else(|| cards.to_vec());
             self.event_bus
                 .emit_to_room(
                     room_id,
                     RoomEvent::GameWon {
                         winner: player_uuid.to_string(),
+                        winning_hand,
                     },
                 )
                 .await;
@@ -133,7 +139,12 @@ impl GameEventRoomSubscriber {
         Ok(())
     }
 
-    async fn handle_game_won(&self, room_id: &str, winner: &str) -> Result<(), RoomEventError> {
+    async fn handle_game_won(
+        &self,
+        room_id: &str,
+        winner: &str,
+        winning_hand: &[Card],
+    ) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, winner = %winner, "Game won, starting 5-second reset timer");
 
         // Clone necessary data for the async task

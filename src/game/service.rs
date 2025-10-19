@@ -8,6 +8,7 @@ use crate::{
 pub struct MoveResult {
     pub game: Game,
     pub player_won: bool,
+    pub winning_hand: Option<Vec<Card>>,
 }
 
 pub struct GameService {
@@ -102,13 +103,23 @@ impl GameService {
             .play_cards(player_uuid, cards)
             .map_err(|e| AppError::NotFound(format!("Game error: {}", e)))?;
 
+        let winning_hand = if player_won {
+            Some(game.last_played_cards())
+        } else {
+            None
+        };
+
         // Update the game in the repository
         self.game_repository
             .update_game(room_id, game.clone())
             .await
             .map_err(|_e| AppError::Internal)?;
 
-        Ok(MoveResult { game, player_won })
+        Ok(MoveResult {
+            game,
+            player_won,
+            winning_hand,
+        })
     }
 
     /// Get the current game state for a room (read-only access)

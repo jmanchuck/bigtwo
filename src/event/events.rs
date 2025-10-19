@@ -36,7 +36,10 @@ pub enum RoomEvent {
     /// Turn changed to next player
     TurnChanged { player: String },
     /// Game won by a player
-    GameWon { winner: String },
+    GameWon {
+        winner: String,
+        winning_hand: Vec<Card>,
+    },
     /// Game reset to lobby (after win countdown)
     GameReset,
     /// A bot was added to the room
