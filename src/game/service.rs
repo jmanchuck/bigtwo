@@ -4,10 +4,14 @@ use crate::{
     user::PlayerMappingService,
 };
 
+/// Result of attempting to play a move in a game
 #[derive(Debug, Clone)]
 pub struct MoveResult {
+    /// The updated game state after the move
     pub game: Game,
+    /// Whether the player won the game with this move
     pub player_won: bool,
+    /// The winning hand cards if the player won (always Some when player_won is true)
     pub winning_hand: Option<Vec<Card>>,
 }
 
@@ -336,5 +340,59 @@ mod tests {
         let move_result = result.unwrap();
         // In a normal game with full hands, this won't be a win
         assert!(!move_result.player_won);
+    }
+
+    #[tokio::test]
+    async fn test_winning_hand_capture() {
+        use crate::user::mapping_service::InMemoryPlayerMappingService;
+        let player_mapping = std::sync::Arc::new(InMemoryPlayerMappingService::new());
+
+        let service = GameService::new(player_mapping.clone());
+
+        // Create a game with predetermined cards where a player can win immediately
+        let winning_cards = vec![Card::new(Rank::Three, Suit::Diamonds)];
+        let player_data = vec![
+            (
+                "Alice".to_string(),
+                "alice-uuid".to_string(),
+                winning_cards.clone(),
+            ),
+            (
+                "Bob".to_string(),
+                "bob-uuid".to_string(),
+                vec![Card::new(Rank::Four, Suit::Hearts)],
+            ),
+            (
+                "Charlie".to_string(),
+                "charlie-uuid".to_string(),
+                vec![Card::new(Rank::Five, Suit::Spades)],
+            ),
+            (
+                "David".to_string(),
+                "david-uuid".to_string(),
+                vec![Card::new(Rank::Six, Suit::Clubs)],
+            ),
+        ];
+
+        service
+            .create_game_with_cards("test_room", player_data)
+            .await
+            .unwrap();
+
+        // Alice plays her only card and wins
+        let result = service
+            .try_play_move("test_room", "alice-uuid", &winning_cards)
+            .await;
+
+        assert!(result.is_ok());
+        let move_result = result.unwrap();
+
+        // Verify player won
+        assert!(move_result.player_won);
+
+        // Verify winning_hand is Some and contains the correct cards
+        assert!(move_result.winning_hand.is_some());
+        let captured_winning_hand = move_result.winning_hand.unwrap();
+        assert_eq!(captured_winning_hand, winning_cards);
     }
 }

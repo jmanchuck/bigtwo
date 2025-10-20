@@ -37,7 +37,9 @@ pub enum RoomEvent {
     TurnChanged { player: String },
     /// Game won by a player
     GameWon {
+        /// UUID of the player who won the game
         winner: String,
+        /// The cards that were played in the winning move
         winning_hand: Vec<Card>,
     },
     /// Game reset to lobby (after win countdown)

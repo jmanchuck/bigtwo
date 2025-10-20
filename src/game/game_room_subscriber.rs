@@ -101,7 +101,9 @@ impl GameEventRoomSubscriber {
 
         // If player won, emit GameWon event and return
         if move_result.player_won {
-            let winning_hand = move_result.winning_hand.unwrap_or_else(|| cards.to_vec());
+            let winning_hand = move_result.winning_hand.expect(
+                "winning_hand should always be Some when player_won is true"
+            );
             self.event_bus
                 .emit_to_room(
                     room_id,
@@ -143,7 +145,7 @@ impl GameEventRoomSubscriber {
         &self,
         room_id: &str,
         winner: &str,
-        winning_hand: &[Card],
+        _winning_hand: &[Card],
     ) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, winner = %winner, "Game won, starting 5-second reset timer");
 
