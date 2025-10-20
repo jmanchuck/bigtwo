@@ -101,9 +101,9 @@ impl GameEventRoomSubscriber {
 
         // If player won, emit GameWon event and return
         if move_result.player_won {
-            let winning_hand = move_result.winning_hand.expect(
-                "winning_hand should always be Some when player_won is true"
-            );
+            let winning_hand = move_result
+                .winning_hand
+                .expect("winning_hand should always be Some when player_won is true");
             self.event_bus
                 .emit_to_room(
                     room_id,
