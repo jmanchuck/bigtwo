@@ -216,7 +216,12 @@ impl GameEventHandlers {
         Ok(())
     }
 
-    pub async fn handle_game_won(&self, room_id: &str, winner: &str) -> Result<(), RoomEventError> {
+    pub async fn handle_game_won(
+        &self,
+        room_id: &str,
+        winner: &str,
+        winning_hand: &[Card],
+    ) -> Result<(), RoomEventError> {
         info!(
             room_id = %room_id,
             winner = %winner,
@@ -232,7 +237,8 @@ impl GameEventHandlers {
                     room_id
                 )))?;
 
-        let game_won_message = WebSocketMessage::game_won(winner.to_string());
+        let card_strings = cards_to_strings(winning_hand);
+        let game_won_message = WebSocketMessage::game_won(winner.to_string(), card_strings);
         let player_uuids: Vec<String> = game.players().iter().map(|p| p.uuid.clone()).collect();
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,

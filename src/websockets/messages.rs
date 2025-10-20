@@ -101,6 +101,7 @@ pub struct TurnChangePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameWonPayload {
     pub winner: String,
+    pub winning_hand: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,8 +222,11 @@ impl WebSocketMessage {
     }
 
     /// Create a GAME_WON message
-    pub fn game_won(winner: String) -> Self {
-        let payload = GameWonPayload { winner };
+    pub fn game_won(winner: String, winning_hand: Vec<String>) -> Self {
+        let payload = GameWonPayload {
+            winner,
+            winning_hand,
+        };
         Self::new(MessageType::GameWon, serde_json::to_value(payload).unwrap())
     }
 
@@ -305,7 +309,7 @@ mod tests {
         assert!(matches!(t.message_type, MessageType::TurnChange));
 
         // game_won
-        let gw = WebSocketMessage::game_won("u3".to_string());
+        let gw = WebSocketMessage::game_won("u3".to_string(), vec!["Card1".to_string()]);
         assert!(matches!(gw.message_type, MessageType::GameWon));
 
         // game_reset

@@ -108,8 +108,13 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .handle_turn_changed(room_id, &player)
                     .await
             }
-            RoomEvent::GameWon { winner } => {
-                self.game_handlers.handle_game_won(room_id, &winner).await
+            RoomEvent::GameWon {
+                winner,
+                winning_hand,
+            } => {
+                self.game_handlers
+                    .handle_game_won(room_id, &winner, &winning_hand)
+                    .await
             }
             RoomEvent::GameReset => self.game_handlers.handle_game_reset(room_id).await,
             RoomEvent::BotAdded { bot_uuid, bot_name } => {
