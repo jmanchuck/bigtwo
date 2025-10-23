@@ -24,6 +24,7 @@
   - Completion timestamp
   - Winner UUID
   - Bot participation flag (for future filtering)
+  - Game number increments per room in memory for the room's lifetime (resets when the room is torn down)
 
 #### What to Capture Per Player
 - **Cards Remaining**: Number of cards in hand when game ends (0 for winner)
@@ -42,8 +43,9 @@
    - Example: 12 cards → 12 × 2 = 24 points
 
 3. **Score Interpretation**:
-   - Lower score = better performance
-   - Negative cumulative score means player is winning overall
+   - Scores are always ≥ 0; lower totals indicate better performance
+   - Winners remain at 0 for that game; losers accumulate positive points
+   - Compare players by smallest non-negative cumulative score
 
 #### Aggregate Statistics (Per Player, Per Room)
 - **Games Played**: Total games completed in this room
@@ -166,6 +168,8 @@ pub struct PlayerStats {
     pub best_win_streak: u32,
 }
 ```
+
+**Name Resolution**: Player UUIDs remain the canonical identifiers (matching existing room/game logic). `StatsService` resolves a stable display name for UI consumption via the player-mapping subsystem; when no explicit name exists, fall back to the generated player name assigned when the user joined the room.
 
 ### 4.2 Repository Pattern
 
