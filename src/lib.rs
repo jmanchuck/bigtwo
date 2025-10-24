@@ -18,8 +18,8 @@ pub use game::GameService;
 pub use room::{models::RoomModel, repository::RoomRepository};
 pub use shared::AppError;
 pub use stats::{
-    models::*, repository::InMemoryStatsRepository, repository::StatsRepository, StatsRoomSubscriber,
-    StatsService,
+    models::*, repository::InMemoryStatsRepository, repository::StatsRepository,
+    StatsRoomSubscriber, StatsService,
 };
 pub use user::PlayerMappingService;
 pub use websockets::{ConnectionManager, WebSocketRoomSubscriber};

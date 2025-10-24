@@ -5,12 +5,12 @@ use bigtwo::{
     bot::BotManager,
     event::{EventBus, RoomSubscription},
     game::{GameEventRoomSubscriber, GameService},
-    stats::{service::StatsRoomSubscriber, InMemoryStatsRepository, StatsRepository, StatsService},
     room::{
         models::RoomModel,
         repository::{InMemoryRoomRepository, RoomRepository},
         service::RoomService,
     },
+    stats::{service::StatsRoomSubscriber, InMemoryStatsRepository, StatsRepository, StatsService},
     user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService},
     websockets::{WebSocketRoomSubscriber, WebsocketReceiveHandler},
 };

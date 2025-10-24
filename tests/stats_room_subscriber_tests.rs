@@ -35,4 +35,3 @@ async fn stats_service_records_game_when_game_won_event_emitted() {
     assert_eq!(stats.games_played, 1);
     assert!(stats.player_stats.contains_key(&first_player));
 }
-

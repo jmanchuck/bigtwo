@@ -489,10 +489,7 @@ impl RoomEventHandler for StatsRoomSubscriber {
                         Ok((_game_result, room_stats)) => {
                             // Emit StatsUpdated event so WebSocket subscribers can broadcast
                             self.event_bus
-                                .emit_to_room(
-                                    room_id,
-                                    RoomEvent::StatsUpdated { room_stats },
-                                )
+                                .emit_to_room(room_id, RoomEvent::StatsUpdated { room_stats })
                                 .await;
                         }
                         Err(err) => {
