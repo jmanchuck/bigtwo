@@ -316,12 +316,12 @@ impl RoomEventHandlers {
             "Handling player ready toggled event"
         );
 
-        // Toggle ready state in repository
+        // Set ready state in repository based on the is_ready parameter
         self.room_service
-            .toggle_ready(room_id, player_uuid)
+            .set_ready(room_id, player_uuid, is_ready)
             .await
             .map_err(|e| {
-                RoomEventError::HandlerError(format!("Failed to toggle ready state: {}", e))
+                RoomEventError::HandlerError(format!("Failed to set ready state: {}", e))
             })?;
 
         // Get updated room state

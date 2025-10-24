@@ -164,6 +164,35 @@ impl RoomService {
         Ok(())
     }
 
+    /// Set ready state for a player in a room
+    #[instrument(skip(self))]
+    pub async fn set_ready(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+        is_ready: bool,
+    ) -> Result<(), AppError> {
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = is_ready,
+            "Setting ready state for player"
+        );
+
+        self.repository
+            .set_ready(room_id, player_uuid, is_ready)
+            .await?;
+
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = is_ready,
+            "Ready state set successfully"
+        );
+
+        Ok(())
+    }
+
     /// Clear all ready states in a room (called when game starts)
     #[instrument(skip(self))]
     pub async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError> {
@@ -500,5 +529,251 @@ mod tests {
             4,
             "Final room should have exactly 4 players"
         );
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_marks_player_as_ready() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
+
+        // Create a room and add a player
+        let create_request = RoomCreateRequest {
+            host_uuid: "host-uuid".to_string(),
+        };
+        let created_room = service.create_room(create_request).await.unwrap();
+        service
+            .join_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+
+        // Mark player as ready
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+
+        // Verify player is ready
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(room.is_ready("player1"));
+        assert_eq!(room.get_ready_players().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_unmarks_player_as_ready() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
+
+        // Create a room and add a player
+        let create_request = RoomCreateRequest {
+            host_uuid: "host-uuid".to_string(),
+        };
+        let created_room = service.create_room(create_request).await.unwrap();
+        service
+            .join_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+
+        // Mark player as ready, then unready
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+        service
+            .set_ready(&created_room.id, "player1", false)
+            .await
+            .unwrap();
+
+        // Verify player is not ready
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!room.is_ready("player1"));
+        assert_eq!(room.get_ready_players().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_multiple_players() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
+
+        // Create a room and add multiple players
+        let create_request = RoomCreateRequest {
+            host_uuid: "host-uuid".to_string(),
+        };
+        let created_room = service.create_room(create_request).await.unwrap();
+        service
+            .join_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player2".to_string())
+            .await
+            .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player3".to_string())
+            .await
+            .unwrap();
+
+        // Mark players 1 and 3 as ready
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+        service
+            .set_ready(&created_room.id, "player3", true)
+            .await
+            .unwrap();
+
+        // Verify ready states
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(room.is_ready("player1"));
+        assert!(!room.is_ready("player2"));
+        assert!(room.is_ready("player3"));
+        assert_eq!(room.get_ready_players().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_clear_ready_states() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
+
+        // Create a room and add players
+        let create_request = RoomCreateRequest {
+            host_uuid: "host-uuid".to_string(),
+        };
+        let created_room = service.create_room(create_request).await.unwrap();
+        service
+            .join_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player2".to_string())
+            .await
+            .unwrap();
+
+        // Mark both players as ready
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+        service
+            .set_ready(&created_room.id, "player2", true)
+            .await
+            .unwrap();
+
+        // Clear all ready states
+        service.clear_ready_states(&created_room.id).await.unwrap();
+
+        // Verify no players are ready
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!room.is_ready("player1"));
+        assert!(!room.is_ready("player2"));
+        assert_eq!(room.get_ready_players().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_ready_state_cleared_when_player_leaves() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
+
+        // Create a room and add players
+        let create_request = RoomCreateRequest {
+            host_uuid: "host-uuid".to_string(),
+        };
+        let created_room = service.create_room(create_request).await.unwrap();
+        service
+            .join_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+        service
+            .join_room(created_room.id.clone(), "player2".to_string())
+            .await
+            .unwrap();
+
+        // Mark player1 as ready
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+
+        // Player1 leaves
+        service
+            .leave_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+
+        // Verify player1 is no longer in ready list
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!room.is_ready("player1"));
+        assert_eq!(room.get_ready_players().len(), 0);
+        assert_eq!(room.get_player_count(), 1); // Only player2 remains
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_nonexistent_room() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository);
+
+        // Try to set ready state in nonexistent room
+        let result = service.set_ready("nonexistent-room", "player1", true).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_idempotent() {
+        let repository = Arc::new(InMemoryRoomRepository::new());
+        let service = RoomService::new(repository.clone());
+
+        // Create a room and add a player
+        let create_request = RoomCreateRequest {
+            host_uuid: "host-uuid".to_string(),
+        };
+        let created_room = service.create_room(create_request).await.unwrap();
+        service
+            .join_room(created_room.id.clone(), "player1".to_string())
+            .await
+            .unwrap();
+
+        // Mark player as ready multiple times
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+        service
+            .set_ready(&created_room.id, "player1", true)
+            .await
+            .unwrap();
+
+        // Verify player is ready (only once in the list)
+        let room = repository
+            .get_room(&created_room.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(room.is_ready("player1"));
+        assert_eq!(room.get_ready_players().len(), 1);
     }
 }

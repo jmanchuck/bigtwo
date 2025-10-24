@@ -55,6 +55,14 @@ pub trait RoomRepository {
     /// Toggle ready state for a player in a room
     async fn toggle_ready(&self, room_id: &str, player_uuid: &str) -> Result<(), AppError>;
 
+    /// Set ready state for a player in a room
+    async fn set_ready(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+        is_ready: bool,
+    ) -> Result<(), AppError>;
+
     /// Clear all ready states in a room (called when game starts)
     async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError>;
 }
@@ -284,6 +292,39 @@ impl RoomRepository for InMemoryRoomRepository {
             player_uuid = %player_uuid,
             is_ready = room.is_ready(player_uuid),
             "Player ready state toggled"
+        );
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn set_ready(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+        is_ready: bool,
+    ) -> Result<(), AppError> {
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = is_ready,
+            "Setting ready state"
+        );
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        let room = rooms.get_mut(room_id).ok_or_else(|| {
+            warn!(room_id = %room_id, "Room not found");
+            AppError::NotFound("Room not found".to_string())
+        })?;
+
+        room.set_ready(player_uuid, is_ready);
+
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = is_ready,
+            "Player ready state set"
         );
 
         Ok(())

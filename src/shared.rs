@@ -357,6 +357,15 @@ pub mod test_utils {
             Ok(())
         }
 
+        async fn set_ready(
+            &self,
+            _room_id: &str,
+            _player_uuid: &str,
+            _is_ready: bool,
+        ) -> Result<(), AppError> {
+            Ok(())
+        }
+
         async fn clear_ready_states(&self, _room_id: &str) -> Result<(), AppError> {
             Ok(())
         }

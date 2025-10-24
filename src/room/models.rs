@@ -80,6 +80,15 @@ impl RoomModel {
         }
     }
 
+    /// Set ready state for a player
+    pub fn set_ready(&mut self, player_uuid: &str, is_ready: bool) {
+        if is_ready {
+            self.mark_ready(player_uuid);
+        } else {
+            self.mark_unready(player_uuid);
+        }
+    }
+
     /// Check if a player is ready
     pub fn is_ready(&self, player_uuid: &str) -> bool {
         self.ready_players.contains(&player_uuid.to_string())
