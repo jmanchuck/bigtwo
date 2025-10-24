@@ -20,6 +20,7 @@ pub struct GameEventHandlers {
     connection_manager: Arc<dyn ConnectionManager>,
     game_service: Arc<GameService>,
     event_bus: EventBus,
+    bot_manager: Arc<crate::bot::BotManager>,
 }
 
 impl GameEventHandlers {
@@ -28,17 +29,27 @@ impl GameEventHandlers {
         connection_manager: Arc<dyn ConnectionManager>,
         game_service: Arc<GameService>,
         event_bus: EventBus,
+        bot_manager: Arc<crate::bot::BotManager>,
     ) -> Self {
         Self {
             room_service,
             connection_manager,
             game_service,
             event_bus,
+            bot_manager,
         }
     }
 
     pub async fn handle_start_game(&self, room_id: &str, game: Game) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, "Starting game");
+
+        // Clear all ready states when game starts
+        self.room_service
+            .clear_ready_states(room_id)
+            .await
+            .map_err(|e| {
+                RoomEventError::HandlerError(format!("Failed to clear ready states: {}", e))
+            })?;
 
         let current_player_turn = game.current_player_turn();
 
@@ -110,6 +121,36 @@ impl GameEventHandlers {
 
         if room.get_player_uuids().len() != 4 {
             info!(room_id = %room_id, "Room does not have 4 players, cannot start game");
+            return Ok(());
+        }
+
+        // Check that all human (non-bot) players are ready
+        let bot_uuids_set: std::collections::HashSet<_> = self
+            .bot_manager
+            .get_bot_uuids_in_room(room_id)
+            .await
+            .into_iter()
+            .collect();
+
+        let human_player_uuids: Vec<_> = room
+            .get_player_uuids()
+            .iter()
+            .filter(|uuid| !bot_uuids_set.contains(*uuid))
+            .collect();
+
+        let ready_uuids_set: std::collections::HashSet<_> =
+            room.get_ready_players().iter().collect();
+
+        let all_humans_ready = human_player_uuids
+            .iter()
+            .all(|uuid| ready_uuids_set.contains(uuid));
+
+        if !all_humans_ready {
+            info!(
+                room_id = %room_id,
+                "Not all human players are ready, cannot start game"
+            );
+            // TODO: Send error message back to host
             return Ok(());
         }
 

@@ -45,6 +45,7 @@ mod tests {
             host_uuid: Some("h".to_string()),
             status: "ONLINE".to_string(),
             player_uuids: vec![],
+            ready_players: vec![],
         };
         repo.create_room(&room).await.unwrap();
 
@@ -81,6 +82,7 @@ mod tests {
             host_uuid: Some("h".to_string()),
             status: "ONLINE".to_string(),
             player_uuids: vec![],
+            ready_players: vec![],
         };
         repo.create_room(&room).await.unwrap();
         let some = RoomQueryUtils::get_room_if_exists(&service, "r2")

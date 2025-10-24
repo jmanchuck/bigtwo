@@ -99,6 +99,8 @@ impl TestSetupBuilder {
             host_uuid: Some(self.players.first().unwrap().0.clone()),
             status: "ONLINE".to_string(),
             player_uuids: self.players.iter().map(|p| p.0.clone()).collect(),
+            // Mark all players as ready by default for testing
+            ready_players: self.players.iter().map(|p| p.0.clone()).collect(),
         };
         repo.create_room(&room).await.unwrap();
 

@@ -51,6 +51,12 @@ pub trait RoomRepository {
         room_id: &str,
         player_uuid: &str,
     ) -> Result<LeaveRoomResult, AppError>;
+
+    /// Toggle ready state for a player in a room
+    async fn toggle_ready(&self, room_id: &str, player_uuid: &str) -> Result<(), AppError>;
+
+    /// Clear all ready states in a room (called when game starts)
+    async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError>;
 }
 
 /// In-memory implementation of RoomRepository for development and testing
@@ -218,16 +224,30 @@ impl RoomRepository for InMemoryRoomRepository {
             return Ok(LeaveRoomResult::RoomDeleted);
         }
 
-        // If the leaving player was the host, assign new host to first remaining player
+        // If the leaving player was the host, assign new host to first remaining human player
         if room.host_uuid.is_some() && room.host_uuid.as_ref().unwrap() == player_uuid {
-            if let Some(new_host) = room.player_uuids.first().cloned() {
+            // Find first non-bot player
+            let new_host = room
+                .player_uuids
+                .iter()
+                .find(|uuid| !crate::bot::types::BotPlayer::is_bot_uuid(uuid))
+                .cloned();
+
+            if let Some(new_host) = new_host {
                 info!(
                     room_id = %room_id,
                     old_host = %player_uuid,
                     new_host = %new_host,
-                    "Host left, assigning new host"
+                    "Host left, assigning new human host"
                 );
                 room.host_uuid = Some(new_host);
+            } else {
+                // No human players left, only bots - this shouldn't happen due to earlier check
+                warn!(
+                    room_id = %room_id,
+                    "No human players available to become host"
+                );
+                room.host_uuid = None;
             }
         }
 
@@ -240,6 +260,51 @@ impl RoomRepository for InMemoryRoomRepository {
             "Player left room successfully with UUID (atomic)"
         );
         Ok(LeaveRoomResult::Success(updated_room))
+    }
+
+    #[instrument(skip(self))]
+    async fn toggle_ready(&self, room_id: &str, player_uuid: &str) -> Result<(), AppError> {
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Toggling ready state"
+        );
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        let room = rooms.get_mut(room_id).ok_or_else(|| {
+            warn!(room_id = %room_id, "Room not found");
+            AppError::NotFound("Room not found".to_string())
+        })?;
+
+        room.toggle_ready(player_uuid);
+
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = room.is_ready(player_uuid),
+            "Player ready state toggled"
+        );
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError> {
+        debug!(room_id = %room_id, "Clearing all ready states");
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        let room = rooms.get_mut(room_id).ok_or_else(|| {
+            warn!(room_id = %room_id, "Room not found");
+            AppError::NotFound("Room not found".to_string())
+        })?;
+
+        room.clear_ready_states();
+
+        info!(room_id = %room_id, "All ready states cleared");
+
+        Ok(())
     }
 }
 
@@ -254,6 +319,7 @@ mod tests {
             host_uuid: Some(host_uuid.to_string()),
             status: "ONLINE".to_string(),
             player_uuids: vec![host_uuid.to_string()], // Test UUID for host
+            ready_players: vec![],
         }
     }
 
@@ -602,6 +668,125 @@ mod tests {
                 assert!(updated_room.has_player("human1"));
                 assert!(updated_room.has_player("human2"));
                 assert!(!updated_room.has_player("bot-12345"));
+            }
+            _ => panic!("Expected success, got {:?}", result),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_toggle_ready() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "player1");
+        room.add_player("player2".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Initially no one is ready
+        let room_check = repo.get_room("test-room").await.unwrap().unwrap();
+        assert!(!room_check.is_ready("player1"));
+        assert!(!room_check.is_ready("player2"));
+
+        // Toggle player1 to ready
+        repo.toggle_ready("test-room", "player1").await.unwrap();
+        let room_check = repo.get_room("test-room").await.unwrap().unwrap();
+        assert!(room_check.is_ready("player1"));
+        assert!(!room_check.is_ready("player2"));
+
+        // Toggle player1 to unready
+        repo.toggle_ready("test-room", "player1").await.unwrap();
+        let room_check = repo.get_room("test-room").await.unwrap().unwrap();
+        assert!(!room_check.is_ready("player1"));
+
+        // Toggle both players ready
+        repo.toggle_ready("test-room", "player1").await.unwrap();
+        repo.toggle_ready("test-room", "player2").await.unwrap();
+        let room_check = repo.get_room("test-room").await.unwrap().unwrap();
+        assert!(room_check.is_ready("player1"));
+        assert!(room_check.is_ready("player2"));
+    }
+
+    #[tokio::test]
+    async fn test_ready_state_cleared_on_player_leave() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "player1");
+        room.add_player("player2".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Mark player2 as ready
+        repo.toggle_ready("test-room", "player2").await.unwrap();
+        let room_check = repo.get_room("test-room").await.unwrap().unwrap();
+        assert!(room_check.is_ready("player2"));
+
+        // Player2 leaves
+        repo.leave_room("test-room", "player2").await.unwrap();
+
+        // If player2 rejoins, they should not be ready
+        let result = repo.try_join_room("test-room", "player2").await.unwrap();
+        match result {
+            JoinRoomResult::Success(updated_room) => {
+                assert!(!updated_room.is_ready("player2"));
+            }
+            _ => panic!("Expected success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_room_model_ready_methods() {
+        let mut room = RoomModel::new("host".to_string());
+        room.add_player("player1".to_string());
+        room.add_player("player2".to_string());
+
+        // Test mark_ready
+        room.mark_ready("player1");
+        assert!(room.is_ready("player1"));
+        assert!(!room.is_ready("player2"));
+
+        // Test duplicate mark_ready (should be idempotent)
+        room.mark_ready("player1");
+        assert_eq!(room.get_ready_players().len(), 1);
+
+        // Test mark_unready
+        room.mark_unready("player1");
+        assert!(!room.is_ready("player1"));
+
+        // Test toggle
+        room.toggle_ready("player1");
+        assert!(room.is_ready("player1"));
+        room.toggle_ready("player1");
+        assert!(!room.is_ready("player1"));
+
+        // Test clear_ready_states
+        room.mark_ready("player1");
+        room.mark_ready("player2");
+        assert_eq!(room.get_ready_players().len(), 2);
+        room.clear_ready_states();
+        assert_eq!(room.get_ready_players().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_leave_room_host_leaves_with_bots_human_becomes_host() {
+        let repo = InMemoryRoomRepository::new();
+        let mut room = create_test_room_with_host("test-room", "human-host");
+        room.add_player("bot-12345".to_string()); // Bot should never become host
+        room.add_player("human-player".to_string()); // This human should become host
+        room.add_player("bot-67890".to_string()); // Another bot
+        repo.create_room(&room).await.unwrap();
+
+        // Human host leaves
+        let result = repo.leave_room("test-room", "human-host").await.unwrap();
+
+        // Verify that the first human (not bot) becomes the new host
+        match result {
+            LeaveRoomResult::Success(updated_room) => {
+                assert_eq!(updated_room.get_player_count(), 3);
+                assert_eq!(
+                    updated_room.host_uuid,
+                    Some("human-player".to_string()),
+                    "First human player should become host, not bot"
+                );
+                assert!(updated_room.has_player("bot-12345"));
+                assert!(updated_room.has_player("human-player"));
+                assert!(updated_room.has_player("bot-67890"));
+                assert!(!updated_room.has_player("human-host"));
             }
             _ => panic!("Expected success, got {:?}", result),
         }

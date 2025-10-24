@@ -143,6 +143,38 @@ impl RoomService {
 
         Ok(result)
     }
+
+    /// Toggle ready state for a player in a room
+    #[instrument(skip(self))]
+    pub async fn toggle_ready(&self, room_id: &str, player_uuid: &str) -> Result<(), AppError> {
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Toggling ready state for player"
+        );
+
+        self.repository.toggle_ready(room_id, player_uuid).await?;
+
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Ready state toggled successfully"
+        );
+
+        Ok(())
+    }
+
+    /// Clear all ready states in a room (called when game starts)
+    #[instrument(skip(self))]
+    pub async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError> {
+        debug!(room_id = %room_id, "Clearing all ready states");
+
+        self.repository.clear_ready_states(room_id).await?;
+
+        info!(room_id = %room_id, "All ready states cleared");
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

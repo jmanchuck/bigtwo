@@ -127,6 +127,11 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .handle_bot_removed(room_id, &bot_uuid)
                     .await
             }
+            RoomEvent::PlayerReadyToggled { player, is_ready } => {
+                self.room_handlers
+                    .handle_player_ready_toggled(room_id, &player, is_ready)
+                    .await
+            }
             _ => {
                 info!(
                     room_id = %room_id,
@@ -167,6 +172,7 @@ impl WebSocketRoomSubscriber {
             Arc::clone(&connection_manager),
             Arc::clone(&game_service),
             event_bus.clone(),
+            Arc::clone(&bot_manager),
         );
 
         let connection_handlers = ConnectionEventHandlers::new(

@@ -10,6 +10,7 @@ pub enum MessageType {
     Move,
     Leave,
     StartGame,
+    Ready,
 
     // Server -> Client
     PlayersList,
@@ -57,6 +58,11 @@ pub struct LeavePayload {
     pub player: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadyPayload {
+    pub is_ready: bool,
+}
+
 /// Server-to-Client message payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayersListPayload {
@@ -66,11 +72,16 @@ pub struct PlayersListPayload {
     pub mapping: std::collections::HashMap<String, String>,
     /// UUIDs of bot players in the room
     pub bot_uuids: Vec<String>,
+    /// UUIDs of players who are ready
+    pub ready_players: Vec<String>,
+    /// UUID of the current host
+    pub host_uuid: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostChangePayload {
-    pub host: String,
+    pub host: String,      // Display name for backwards compatibility
+    pub host_uuid: String, // UUID of the new host
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,11 +149,15 @@ impl WebSocketMessage {
         players: Vec<String>,
         mapping: std::collections::HashMap<String, String>,
         bot_uuids: Vec<String>,
+        ready_players: Vec<String>,
+        host_uuid: Option<String>,
     ) -> Self {
         let payload = PlayersListPayload {
             players,
             mapping,
             bot_uuids,
+            ready_players,
+            host_uuid,
         };
         Self::new(
             MessageType::PlayersList,
@@ -151,8 +166,8 @@ impl WebSocketMessage {
     }
 
     /// Create a HOST_CHANGE message
-    pub fn host_change(host: String) -> Self {
-        let payload = HostChangePayload { host };
+    pub fn host_change(host: String, host_uuid: String) -> Self {
+        let payload = HostChangePayload { host, host_uuid };
         Self::new(
             MessageType::HostChange,
             serde_json::to_value(payload).unwrap(),
@@ -267,7 +282,13 @@ mod tests {
         // players_list
         let mut map = std::collections::HashMap::new();
         map.insert("u1".to_string(), "Alice".to_string());
-        let m = WebSocketMessage::players_list(vec!["u1".to_string()], map.clone(), vec![]);
+        let m = WebSocketMessage::players_list(
+            vec!["u1".to_string()],
+            map.clone(),
+            vec![],
+            vec![],
+            Some("host-uuid".to_string()),
+        );
         assert!(matches!(m.message_type, MessageType::PlayersList));
         let s = serde_json::to_string(&m).unwrap();
         let back: WebSocketMessage = serde_json::from_str(&s).unwrap();
@@ -278,7 +299,7 @@ mod tests {
         assert!(matches!(e.message_type, MessageType::Error));
 
         // host_change
-        let h = WebSocketMessage::host_change("u1".to_string());
+        let h = WebSocketMessage::host_change("u1".to_string(), "host-uuid".to_string());
         assert!(matches!(h.message_type, MessageType::HostChange));
 
         // game_started

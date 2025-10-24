@@ -76,6 +76,21 @@ impl MessageHandler for WebsocketReceiveHandler {
                         )
                         .await;
                 }
+                MessageType::Ready => {
+                    if let Some(is_ready) =
+                        ws_message.payload.get("is_ready").and_then(|v| v.as_bool())
+                    {
+                        self.event_bus
+                            .emit_to_room(
+                                room_id,
+                                RoomEvent::PlayerReadyToggled {
+                                    player: username.to_string(),
+                                    is_ready,
+                                },
+                            )
+                            .await;
+                    }
+                }
                 MessageType::Move => {
                     if let Some(cards_array) =
                         ws_message.payload.get("cards").and_then(|v| v.as_array())
@@ -357,6 +372,8 @@ async fn handle_websocket_connection(
             room.get_player_uuids().clone(),
             mapping,
             bot_uuids,
+            room.get_ready_players().clone(),
+            room.host_uuid.clone(),
         );
         if let Ok(message_json) = serde_json::to_string(&initial_message) {
             let _ = outbound_sender.send(message_json);
