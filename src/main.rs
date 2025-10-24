@@ -4,6 +4,7 @@ mod game;
 mod room;
 mod session;
 mod shared;
+mod stats;
 mod user;
 mod websockets;
 

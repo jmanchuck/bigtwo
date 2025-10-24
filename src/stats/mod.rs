@@ -1,0 +1,54 @@
+pub mod calculators;
+pub mod collectors;
+
+mod errors;
+pub mod models;
+pub mod repository;
+pub mod service;
+
+pub use errors::StatsError;
+pub use models::*;
+pub use repository::{InMemoryStatsRepository, StatsRepository};
+
+use async_trait::async_trait;
+
+use crate::game::Game;
+
+pub type CollectedDataBatch = Vec<CollectedData>;
+
+#[async_trait]
+pub trait StatCollector: Send + Sync {
+    async fn collect(
+        &self,
+        game: &Game,
+        winner_uuid: &str,
+    ) -> Result<CollectedDataBatch, StatsError>;
+}
+
+pub trait ScoreCalculator: Send + Sync {
+    fn calculate(
+        &self,
+        player_uuid: &str,
+        collected_data: &[CollectedData],
+        context: &CalculationContext,
+    ) -> i32;
+
+    fn priority(&self) -> u32;
+}
+
+pub struct CalculationContext<'a> {
+    pub game_result: &'a GameResult,
+    pub current_scores: &'a std::collections::HashMap<String, i32>,
+}
+
+impl<'a> CalculationContext<'a> {
+    pub fn new(
+        game_result: &'a GameResult,
+        current_scores: &'a std::collections::HashMap<String, i32>,
+    ) -> Self {
+        Self {
+            game_result,
+            current_scores,
+        }
+    }
+}
