@@ -205,6 +205,7 @@ impl WebSocketRoomSubscriber {
             Arc::clone(&game_service),
             event_bus.clone(),
             Arc::clone(&bot_manager),
+            Arc::clone(&player_mapping),
         );
 
         let connection_handlers = ConnectionEventHandlers::new(
