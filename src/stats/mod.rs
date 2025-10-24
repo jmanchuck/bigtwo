@@ -1,14 +1,15 @@
 pub mod calculators;
 pub mod collectors;
+pub mod service;
 
 mod errors;
 pub mod models;
 pub mod repository;
-pub mod service;
 
 pub use errors::StatsError;
 pub use models::*;
 pub use repository::{InMemoryStatsRepository, StatsRepository};
+pub use service::{StatsRoomSubscriber, StatsService};
 
 use async_trait::async_trait;
 

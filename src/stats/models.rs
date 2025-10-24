@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -19,14 +20,14 @@ pub struct PlayerGameResult {
     pub final_score: i32,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RoomStats {
     pub room_id: String,
     pub games_played: u32,
     pub player_stats: HashMap<String, PlayerStats>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlayerStats {
     pub uuid: String,
     pub games_played: u32,

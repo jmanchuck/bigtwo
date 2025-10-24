@@ -12,8 +12,8 @@ use crate::{
 use super::shared::{MessageBroadcaster, PlayerMappingUtils, RoomQueryUtils};
 
 pub struct RoomEventHandlers {
-    room_service: Arc<RoomService>,
-    connection_manager: Arc<dyn ConnectionManager>,
+    pub(crate) room_service: Arc<RoomService>,
+    pub(crate) connection_manager: Arc<dyn ConnectionManager>,
     player_mapping: Arc<dyn PlayerMappingService>,
     bot_manager: Arc<crate::bot::BotManager>,
 }

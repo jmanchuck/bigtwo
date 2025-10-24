@@ -23,6 +23,7 @@ pub enum MessageType {
     GameReset,
     BotAdded,
     BotRemoved,
+    StatsUpdated,
 }
 
 /// Metadata for WebSocket messages
@@ -129,6 +130,11 @@ pub struct BotAddedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BotRemovedPayload {
     pub bot_uuid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatsUpdatedPayload {
+    pub room_stats: crate::stats::models::RoomStats,
 }
 
 /// Helper functions for creating messages
@@ -271,6 +277,15 @@ impl WebSocketMessage {
             serde_json::to_value(payload).unwrap(),
         )
     }
+
+    /// Create a STATS_UPDATED message
+    pub fn stats_updated(room_stats: crate::stats::models::RoomStats) -> Self {
+        let payload = StatsUpdatedPayload { room_stats };
+        Self::new(
+            MessageType::StatsUpdated,
+            serde_json::to_value(payload).unwrap(),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -344,5 +359,10 @@ mod tests {
         // bot_removed
         let br = WebSocketMessage::bot_removed("bot-123".to_string());
         assert!(matches!(br.message_type, MessageType::BotRemoved));
+
+        // stats_updated
+        let room_stats = crate::stats::models::RoomStats::default();
+        let su = WebSocketMessage::stats_updated(room_stats);
+        assert!(matches!(su.message_type, MessageType::StatsUpdated));
     }
 }

@@ -5,6 +5,7 @@ use bigtwo::{
     bot::BotManager,
     event::{EventBus, RoomSubscription},
     game::{GameEventRoomSubscriber, GameService},
+    stats::{service::StatsRoomSubscriber, InMemoryStatsRepository, StatsRepository, StatsService},
     room::{
         models::RoomModel,
         repository::{InMemoryRoomRepository, RoomRepository},
@@ -25,6 +26,8 @@ pub struct TestSetup {
     pub mock_conn_manager: Arc<MockConnectionManager>,
     pub input_handler: WebsocketReceiveHandler,
     pub game_service: Arc<GameService>,
+    pub stats_service: Arc<StatsService>,
+    pub stats_repository: Arc<dyn StatsRepository>,
     pub players: Vec<(String, String)>,
     pub _subscription_handle: JoinHandle<()>,
     pub bot_manager: Arc<BotManager>,
@@ -92,6 +95,12 @@ impl TestSetupBuilder {
         let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
         let game_service = Arc::new(GameService::new(player_mapping.clone()));
         let bot_manager = Arc::clone(&self.bot_manager);
+        let stats_repository = Arc::new(InMemoryStatsRepository::new()) as Arc<dyn StatsRepository>;
+        let stats_service = Arc::new(
+            StatsService::builder(stats_repository.clone())
+                .with_bot_manager(bot_manager.clone())
+                .build(),
+        );
 
         // Create room
         let room = RoomModel {
@@ -136,10 +145,11 @@ impl TestSetupBuilder {
         );
         let _game_subscription_handle = game_subscription.start().await;
 
-        // Create websocket subscriber to handle message broadcasting
         let room_service = Arc::new(RoomService::new(repo.clone()));
+
+        // Create websocket subscriber to handle message broadcasting
         let output_subscriber = WebSocketRoomSubscriber::new(
-            room_service,
+            Arc::clone(&room_service),
             mock_conn_manager.clone(),
             game_service.clone(),
             player_mapping.clone(),
@@ -154,6 +164,20 @@ impl TestSetupBuilder {
         );
         let subscription_handle = subscription.start().await;
 
+        // Stats subscriber to capture game results
+        let stats_subscriber = StatsRoomSubscriber::new(
+            Arc::clone(&stats_service),
+            Arc::clone(&game_service),
+            Arc::clone(&room_service),
+            event_bus.clone(),
+        );
+        let stats_subscription = RoomSubscription::new(
+            self.room_id.clone(),
+            Arc::new(stats_subscriber),
+            event_bus.clone(),
+        );
+        let _stats_handle = stats_subscription.start().await;
+
         // Give subscribers a brief moment to initialize to avoid race conditions
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
 
@@ -162,6 +186,8 @@ impl TestSetupBuilder {
             mock_conn_manager,
             input_handler,
             game_service,
+            stats_service,
+            stats_repository,
             players: self.players,
             _subscription_handle: subscription_handle,
             bot_manager,

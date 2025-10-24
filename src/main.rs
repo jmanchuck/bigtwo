@@ -27,6 +27,7 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::bot::BotManager;
+use crate::stats::{service::StatsService, InMemoryStatsRepository};
 use crate::websockets::InMemoryConnectionManager;
 use crate::{
     event::EventBus, game::GameService, user::mapping_service::InMemoryPlayerMappingService,
@@ -81,6 +82,15 @@ async fn main() {
     let connection_manager = Arc::new(InMemoryConnectionManager::new());
     let game_service = Arc::new(GameService::new(player_mapping.clone()));
     let bot_manager = Arc::new(BotManager::new());
+
+    // Stats system: in-memory tracking of per-room game statistics
+    info!("📊 Stats tracking enabled (in-memory)");
+    let stats_repository = Arc::new(InMemoryStatsRepository::new());
+    let stats_service = Arc::new(
+        StatsService::builder(stats_repository.clone())
+            .with_bot_manager(bot_manager.clone())
+            .build(),
+    );
     // Create RoomService focused purely on business logic
     let room_service = Arc::new(RoomService::new(room_repository));
 
@@ -93,6 +103,8 @@ async fn main() {
         .with_game_service(game_service)
         .with_player_mapping(player_mapping)
         .with_bot_manager(bot_manager)
+        .with_stats_repository(stats_repository)
+        .with_stats_service(stats_service)
         .build()
         .expect("Failed to build AppState - all required dependencies should be provided");
 
@@ -144,6 +156,7 @@ async fn main() {
             )),
         )
         .route("/room/:room_id", get(room::get_room_details))
+        .route("/room/:room_id/stats", get(room::get_room_stats))
         .route(
             "/room/:room_id/bot",
             post(bot::handlers::add_bot_to_room).layer(middleware::from_fn_with_state(

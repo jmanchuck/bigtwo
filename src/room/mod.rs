@@ -1,5 +1,5 @@
 // Public API - what other modules can use
-pub use handlers::{create_room, get_room_details, join_room, list_rooms};
+pub use handlers::{create_room, get_room_details, get_room_stats, join_room, list_rooms};
 
 // Internal modules
 mod handlers;

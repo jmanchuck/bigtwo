@@ -132,6 +132,38 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .handle_player_ready_toggled(room_id, &player, is_ready)
                     .await
             }
+            RoomEvent::StatsUpdated { room_stats } => {
+                // Broadcast stats update to all connected players
+                let room = match self.room_handlers.room_service.get_room(room_id).await {
+                    Ok(Some(room)) => room,
+                    Ok(None) => {
+                        info!(room_id = %room_id, "Room not found for stats broadcast");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        return Err(RoomEventError::HandlerError(format!(
+                            "Failed to fetch room: {}",
+                            e
+                        )));
+                    }
+                };
+
+                let stats_message = super::messages::WebSocketMessage::stats_updated(room_stats);
+                super::event_handlers::shared::MessageBroadcaster::broadcast_to_players(
+                    &self.room_handlers.connection_manager,
+                    room.get_player_uuids(),
+                    &stats_message,
+                )
+                .await?;
+
+                info!(
+                    room_id = %room_id,
+                    players_notified = room.get_player_uuids().len(),
+                    "Stats update notification sent to all players"
+                );
+
+                Ok(())
+            }
             _ => {
                 info!(
                     room_id = %room_id,
