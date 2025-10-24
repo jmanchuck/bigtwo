@@ -339,6 +339,7 @@ pub mod test_utils {
                     host_uuid: Some("dummy-host".to_string()),
                     status: "ONLINE".to_string(),
                     player_uuids: vec!["dummy-host-uuid".to_string()],
+                    ready_players: vec![],
                 },
             ))
         }
@@ -350,6 +351,23 @@ pub mod test_utils {
         ) -> Result<crate::room::repository::LeaveRoomResult, AppError> {
             // Always return success for dummy implementation
             Ok(crate::room::repository::LeaveRoomResult::PlayerNotInRoom)
+        }
+
+        async fn toggle_ready(&self, _room_id: &str, _player_uuid: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn set_ready(
+            &self,
+            _room_id: &str,
+            _player_uuid: &str,
+            _is_ready: bool,
+        ) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn clear_ready_states(&self, _room_id: &str) -> Result<(), AppError> {
+            Ok(())
         }
     }
 

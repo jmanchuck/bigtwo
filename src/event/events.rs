@@ -48,4 +48,6 @@ pub enum RoomEvent {
     BotAdded { bot_uuid: String, bot_name: String },
     /// A bot was removed from the room
     BotRemoved { bot_uuid: String },
+    /// A player toggled their ready state
+    PlayerReadyToggled { player: String, is_ready: bool },
 }

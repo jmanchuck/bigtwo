@@ -50,8 +50,13 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let ws_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
+        let ws_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+            room.get_ready_players().clone(),
+            room.host_uuid.clone(),
+        );
 
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
@@ -108,8 +113,13 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let players_list_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+            room.get_ready_players().clone(),
+            room.host_uuid.clone(),
+        );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -146,7 +156,8 @@ impl RoomEventHandlers {
                 .await
                 .unwrap_or_else(|| new_host_uuid.to_string());
 
-        let host_change_message = WebSocketMessage::host_change(new_host_name);
+        let host_change_message =
+            WebSocketMessage::host_change(new_host_name, new_host_uuid.to_string());
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -178,6 +189,14 @@ impl RoomEventHandlers {
             "Handling bot added event"
         );
 
+        // Auto-mark bot as ready
+        self.room_service
+            .toggle_ready(room_id, bot_uuid)
+            .await
+            .map_err(|e| {
+                RoomEventError::HandlerError(format!("Failed to mark bot as ready: {}", e))
+            })?;
+
         let room = RoomQueryUtils::get_room_or_error(&self.room_service, room_id).await?;
 
         // Send BOT_ADDED message to all players
@@ -199,8 +218,13 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let players_list_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+            room.get_ready_players().clone(),
+            room.host_uuid.clone(),
+        );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -255,8 +279,13 @@ impl RoomEventHandlers {
 
         let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
 
-        let players_list_message =
-            WebSocketMessage::players_list(room.get_player_uuids().clone(), mapping, bot_uuids);
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+            room.get_ready_players().clone(),
+            room.host_uuid.clone(),
+        );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
             room.get_player_uuids(),
@@ -269,6 +298,64 @@ impl RoomEventHandlers {
             bot_uuid = %bot_uuid,
             players_notified = room.get_player_uuids().len(),
             "Bot removed notification sent to all room players"
+        );
+
+        Ok(())
+    }
+
+    pub async fn handle_player_ready_toggled(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+        is_ready: bool,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = is_ready,
+            "Handling player ready toggled event"
+        );
+
+        // Set ready state in repository based on the is_ready parameter
+        self.room_service
+            .set_ready(room_id, player_uuid, is_ready)
+            .await
+            .map_err(|e| {
+                RoomEventError::HandlerError(format!("Failed to set ready state: {}", e))
+            })?;
+
+        // Get updated room state
+        let room = RoomQueryUtils::get_room_or_error(&self.room_service, room_id).await?;
+
+        // Broadcast updated PLAYERS_LIST with ready state
+        let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
+            &self.player_mapping,
+            room.get_player_uuids(),
+        )
+        .await;
+
+        let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+        let players_list_message = WebSocketMessage::players_list(
+            room.get_player_uuids().clone(),
+            mapping,
+            bot_uuids,
+            room.get_ready_players().clone(),
+            room.host_uuid.clone(),
+        );
+        MessageBroadcaster::broadcast_to_players(
+            &self.connection_manager,
+            room.get_player_uuids(),
+            &players_list_message,
+        )
+        .await?;
+
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            is_ready = is_ready,
+            players_notified = room.get_player_uuids().len(),
+            "Player ready state updated and broadcast to all players"
         );
 
         Ok(())
