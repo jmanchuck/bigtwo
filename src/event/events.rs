@@ -50,6 +50,8 @@ pub enum RoomEvent {
     BotRemoved { bot_uuid: String },
     /// A player toggled their ready state
     PlayerReadyToggled { player: String, is_ready: bool },
+    /// Clear all ready states in the room (typically when returning to lobby)
+    ClearReadyStates,
     /// Room stats were updated (typically after a game completion)
     StatsUpdated {
         room_stats: crate::stats::models::RoomStats,

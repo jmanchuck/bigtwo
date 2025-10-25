@@ -132,6 +132,9 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .handle_player_ready_toggled(room_id, &player, is_ready)
                     .await
             }
+            RoomEvent::ClearReadyStates => {
+                self.room_handlers.handle_clear_ready_states(room_id).await
+            }
             RoomEvent::StatsUpdated { room_stats } => {
                 // Broadcast stats update to all connected players
                 let room = match self.room_handlers.room_service.get_room(room_id).await {

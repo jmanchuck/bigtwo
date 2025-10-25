@@ -162,6 +162,11 @@ impl GameEventRoomSubscriber {
             .await
             .map_err(|e| RoomEventError::HandlerError(format!("Failed to reset game: {}", e)))?;
 
+        // Emit event to clear ready states (let room subscriber handle it)
+        self.event_bus
+            .emit_to_room(room_id, RoomEvent::ClearReadyStates)
+            .await;
+
         Ok(())
     }
 }
