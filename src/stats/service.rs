@@ -44,6 +44,8 @@ impl StatsService {
         let room_lock = self.room_lock(room_id).await;
         let _guard = room_lock.lock().await;
 
+        // Capture timestamp once at the start
+        let completed_at = chrono::Utc::now();
         let game_number = self.next_game_number(room_id).await?;
         let had_bots = self.room_contains_bots(room_id).await;
 
@@ -62,6 +64,7 @@ impl StatsService {
             game_number,
             winner_uuid,
             had_bots,
+            completed_at,
         );
 
         let player_results: Vec<PlayerGameResult> = player_metadata
@@ -79,21 +82,12 @@ impl StatsService {
             game_number,
             winner_uuid: winner_uuid.to_string(),
             players: player_results,
-            completed_at: chrono::Utc::now(),
+            completed_at,
             had_bots,
         };
 
-        self.repository.record_game(game_result.clone()).await?;
-
-        let updated_room_stats = self
-            .repository
-            .get_room_stats(room_id)
-            .await?
-            .unwrap_or_else(|| {
-                let mut default_stats = RoomStats::default();
-                default_stats.room_id = room_id.to_string();
-                default_stats
-            });
+        // Record game and get updated stats in one operation
+        let updated_room_stats = self.repository.record_game(game_result.clone()).await?;
 
         Ok((game_result, updated_room_stats))
     }
@@ -116,6 +110,7 @@ impl StatsService {
         game_number: u32,
         winner_uuid: &str,
         had_bots: bool,
+        completed_at: chrono::DateTime<chrono::Utc>,
     ) -> (HashMap<String, i32>, HashMap<String, i32>) {
         let mut current_scores: HashMap<String, i32> = HashMap::new();
         let mut raw_scores: HashMap<String, i32> = HashMap::new();
@@ -136,7 +131,7 @@ impl StatsService {
                 game_number,
                 winner_uuid: winner_uuid.to_string(),
                 players: snapshot_players,
-                completed_at: chrono::Utc::now(),
+                completed_at,
                 had_bots,
             };
 
@@ -171,6 +166,7 @@ impl StatsService {
     }
 
     async fn room_lock(&self, room_id: &str) -> Arc<AsyncMutex<()>> {
+        // Fast path: check if lock exists with read lock
         {
             let guard = self.room_mutexes.read().await;
             if let Some(lock) = guard.get(room_id) {
@@ -178,6 +174,9 @@ impl StatsService {
             }
         }
 
+        // Slow path: acquire write lock and create if needed
+        // Note: or_insert_with is atomic - it only creates if the entry doesn't exist,
+        // preventing duplicate mutex creation even if multiple threads reach here
         let mut guard = self.room_mutexes.write().await;
         guard
             .entry(room_id.to_string())

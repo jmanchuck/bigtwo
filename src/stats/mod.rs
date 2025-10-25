@@ -17,6 +17,16 @@ use crate::game::Game;
 
 pub type CollectedDataBatch = Vec<CollectedData>;
 
+/// Priority constants for score calculators.
+/// Lower values run first. Calculators with higher priority
+/// can access and modify scores from lower-priority calculators.
+pub mod calculator_priority {
+    /// Base score calculation (e.g., card count)
+    pub const BASE_SCORE: u32 = 100;
+    /// Score multipliers (e.g., 10+ cards doubles score)
+    pub const MULTIPLIER: u32 = 200;
+}
+
 #[async_trait]
 pub trait StatCollector: Send + Sync {
     async fn collect(

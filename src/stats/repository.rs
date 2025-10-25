@@ -7,7 +7,8 @@ use super::{models::RoomStats, GameResult, PlayerGameResult, StatsError};
 
 #[async_trait]
 pub trait StatsRepository: Send + Sync {
-    async fn record_game(&self, game_result: GameResult) -> Result<(), StatsError>;
+    /// Records a game result and returns the updated room stats
+    async fn record_game(&self, game_result: GameResult) -> Result<RoomStats, StatsError>;
     async fn get_room_stats(&self, room_id: &str) -> Result<Option<RoomStats>, StatsError>;
     async fn reset_room_stats(&self, room_id: &str) -> Result<(), StatsError>;
 }
@@ -27,7 +28,7 @@ impl InMemoryStatsRepository {
 
 #[async_trait]
 impl StatsRepository for InMemoryStatsRepository {
-    async fn record_game(&self, game_result: GameResult) -> Result<(), StatsError> {
+    async fn record_game(&self, game_result: GameResult) -> Result<RoomStats, StatsError> {
         let mut rooms = self.rooms.write().await;
         let room_stats = rooms
             .entry(game_result.room_id.clone())
@@ -61,7 +62,7 @@ impl StatsRepository for InMemoryStatsRepository {
             }
         }
 
-        Ok(())
+        Ok(room_stats.clone())
     }
 
     async fn get_room_stats(&self, room_id: &str) -> Result<Option<RoomStats>, StatsError> {

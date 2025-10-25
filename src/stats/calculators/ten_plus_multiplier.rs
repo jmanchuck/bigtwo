@@ -37,7 +37,7 @@ impl ScoreCalculator for TenPlusMultiplierCalculator {
     }
 
     fn priority(&self) -> u32 {
-        200
+        crate::stats::calculator_priority::MULTIPLIER
     }
 }
 

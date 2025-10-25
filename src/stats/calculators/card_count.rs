@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::super::{CalculationContext, CollectedData, ScoreCalculator};
 
 pub struct CardCountScoreCalculator;
@@ -30,7 +28,7 @@ impl ScoreCalculator for CardCountScoreCalculator {
     }
 
     fn priority(&self) -> u32 {
-        100
+        crate::stats::calculator_priority::BASE_SCORE
     }
 }
 
