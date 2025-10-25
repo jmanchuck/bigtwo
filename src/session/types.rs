@@ -20,7 +20,6 @@ pub struct SessionResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_session_claims_serialization() {
