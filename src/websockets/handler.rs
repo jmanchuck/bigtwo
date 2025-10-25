@@ -171,76 +171,6 @@ impl MessageHandler for DefaultMessageHandler {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::event::RoomEvent;
-
-    #[tokio::test]
-    async fn test_receive_handler_emits_events_for_chat_leave_start_move() {
-        let bus = EventBus::new();
-        let handler = WebsocketReceiveHandler::new(bus.clone());
-
-        // Subscribe to room
-        let mut rx = bus.subscribe_to_room("r1").await;
-
-        // Chat
-        let chat = serde_json::json!({
-            "type": "CHAT",
-            "payload": {"content": "hi"},
-            "meta": null
-        });
-        handler
-            .handle_message("alice", "r1", chat.to_string())
-            .await;
-
-        // Leave
-        let leave = serde_json::json!({"type":"LEAVE","payload":{},"meta":null});
-        handler
-            .handle_message("alice", "r1", leave.to_string())
-            .await;
-
-        // Start
-        let start = serde_json::json!({"type":"START_GAME","payload":{},"meta":null});
-        handler
-            .handle_message("host", "r1", start.to_string())
-            .await;
-
-        // Move with valid cards
-        let mv = serde_json::json!({
-            "type":"MOVE",
-            "payload": {"cards":["3D","4D"]},
-            "meta": null
-        });
-        handler.handle_message("alice", "r1", mv.to_string()).await;
-
-        // Drain 4 events in any order
-        let mut seen = vec![];
-        for _ in 0..4 {
-            if let Ok(ev) = rx.try_recv() {
-                seen.push(ev);
-            } else {
-                // fallback to await if not yet ready
-                seen.push(rx.recv().await.unwrap());
-            }
-        }
-
-        // Check types observed
-        assert!(seen
-            .iter()
-            .any(|e| matches!(e, RoomEvent::ChatMessage { .. })));
-        assert!(seen
-            .iter()
-            .any(|e| matches!(e, RoomEvent::PlayerLeaveRequested { .. })));
-        assert!(seen
-            .iter()
-            .any(|e| matches!(e, RoomEvent::TryStartGame { .. })));
-        assert!(seen
-            .iter()
-            .any(|e| matches!(e, RoomEvent::TryPlayMove { .. })));
-    }
-}
-
 /// WebSocket endpoint that handles authentication via Sec-WebSocket-Protocol header
 /// GET /ws/{room_id} with JWT token in Sec-WebSocket-Protocol header
 pub async fn websocket_handler(
@@ -355,7 +285,7 @@ async fn handle_websocket_connection(
         let mut mapping: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         for uuid in room.get_player_uuids() {
-            if let Some(name) = app_state.player_mapping.get_playername(&uuid).await {
+            if let Some(name) = app_state.player_mapping.get_playername(uuid).await {
                 mapping.insert(uuid.clone(), name);
             } else {
                 warn!(
@@ -515,4 +445,74 @@ async fn handle_websocket_connection(
         username = %username,
         "WebSocket disconnect event emitted"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event::RoomEvent;
+
+    #[tokio::test]
+    async fn test_receive_handler_emits_events_for_chat_leave_start_move() {
+        let bus = EventBus::new();
+        let handler = WebsocketReceiveHandler::new(bus.clone());
+
+        // Subscribe to room
+        let mut rx = bus.subscribe_to_room("r1").await;
+
+        // Chat
+        let chat = serde_json::json!({
+            "type": "CHAT",
+            "payload": {"content": "hi"},
+            "meta": null
+        });
+        handler
+            .handle_message("alice", "r1", chat.to_string())
+            .await;
+
+        // Leave
+        let leave = serde_json::json!({"type":"LEAVE","payload":{},"meta":null});
+        handler
+            .handle_message("alice", "r1", leave.to_string())
+            .await;
+
+        // Start
+        let start = serde_json::json!({"type":"START_GAME","payload":{},"meta":null});
+        handler
+            .handle_message("host", "r1", start.to_string())
+            .await;
+
+        // Move with valid cards
+        let mv = serde_json::json!({
+            "type":"MOVE",
+            "payload": {"cards":["3D","4D"]},
+            "meta": null
+        });
+        handler.handle_message("alice", "r1", mv.to_string()).await;
+
+        // Drain 4 events in any order
+        let mut seen = vec![];
+        for _ in 0..4 {
+            if let Ok(ev) = rx.try_recv() {
+                seen.push(ev);
+            } else {
+                // fallback to await if not yet ready
+                seen.push(rx.recv().await.unwrap());
+            }
+        }
+
+        // Check types observed
+        assert!(seen
+            .iter()
+            .any(|e| matches!(e, RoomEvent::ChatMessage { .. })));
+        assert!(seen
+            .iter()
+            .any(|e| matches!(e, RoomEvent::PlayerLeaveRequested { .. })));
+        assert!(seen
+            .iter()
+            .any(|e| matches!(e, RoomEvent::TryStartGame { .. })));
+        assert!(seen
+            .iter()
+            .any(|e| matches!(e, RoomEvent::TryPlayMove { .. })));
+    }
 }

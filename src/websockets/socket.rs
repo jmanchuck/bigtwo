@@ -228,7 +228,7 @@ mod tests {
         drop(out_tx);
         drop(in_tx);
 
-        let _ = join.await.unwrap().unwrap();
+        join.await.unwrap().unwrap();
 
         // Assert outbound was sent to socket
         let sent_vec = sent.lock().unwrap().clone();

@@ -318,8 +318,7 @@ mod tests {
         let mut dealt_cards = game
             .players()
             .iter()
-            .map(|p| p.cards.clone())
-            .flatten()
+            .flat_map(|p| p.cards.clone())
             .collect::<Vec<Card>>();
         dealt_cards.sort();
         // Check that all the cards are unique
@@ -373,7 +372,7 @@ mod tests {
         let result = game.play_cards("alice-uuid", &cards_to_play);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false); // Game should continue, Alice didn't win
+        assert!(!result.unwrap()); // Game should continue, Alice didn't win
 
         // Alice should have 2 cards left
         let alice = &game.players[0];
@@ -416,7 +415,7 @@ mod tests {
         let result = game.play_cards("alice-uuid", &cards_to_play);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true); // Alice should win
+        assert!(result.unwrap()); // Alice should win
 
         // Alice should have 0 cards left
         let alice = &game.players[0];
@@ -456,7 +455,7 @@ mod tests {
         // Alice plays first card
         let result1 = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
         assert!(result1.is_ok());
-        assert_eq!(result1.unwrap(), false); // Game continues
+        assert!(!result1.unwrap()); // Game continues
 
         // Now it's Bob's turn, but Alice needs to play to win
         // Skip Bob's turn by having him pass
@@ -469,7 +468,7 @@ mod tests {
             println!("Error on second play: {:?}", result2.as_ref().unwrap_err());
         }
         assert!(result2.is_ok());
-        assert_eq!(result2.unwrap(), true); // Alice should win
+        assert!(result2.unwrap()); // Alice should win
 
         // Alice should have 0 cards left
         let alice = &game.players[0];
@@ -510,7 +509,7 @@ mod tests {
         let result = game.play_cards("alice-uuid", &[]);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false); // Game continues
+        assert!(!result.unwrap()); // Game continues
 
         // Alice should still have 2 cards
         let alice = &game.players[0];

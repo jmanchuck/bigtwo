@@ -2,6 +2,12 @@ use super::super::{CalculationContext, CollectedData, ScoreCalculator};
 
 pub struct CardCountScoreCalculator;
 
+impl Default for CardCountScoreCalculator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CardCountScoreCalculator {
     pub fn new() -> Self {
         Self

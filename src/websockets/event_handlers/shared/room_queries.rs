@@ -40,7 +40,7 @@ mod tests {
         let service = Arc::new(RoomService::new(repo.clone()));
 
         // Create a room
-        let mut room = crate::room::models::RoomModel {
+        let room = crate::room::models::RoomModel {
             id: "r1".to_string(),
             host_uuid: Some("h".to_string()),
             status: "ONLINE".to_string(),

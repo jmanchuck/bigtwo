@@ -162,8 +162,8 @@ impl AppStateBuilder {
             .ok_or(AppStateBuilderError::MissingDependency("player_mapping"))?;
         let session_service = self
             .session_service
-            .ok_or_else(|| AppStateBuilderError::MissingDependency("session_service"))?;
-        let event_bus = self.event_bus.unwrap_or_else(|| EventBus::new());
+            .ok_or(AppStateBuilderError::MissingDependency("session_service"))?;
+        let event_bus = self.event_bus.unwrap_or_default();
         let connection_manager =
             self.connection_manager
                 .ok_or(AppStateBuilderError::MissingDependency(
@@ -262,7 +262,7 @@ impl AppStateBuilder {
         AppState {
             session_service,
             room_service,
-            event_bus: self.event_bus.unwrap_or_else(|| EventBus::new()),
+            event_bus: self.event_bus.unwrap_or_else(EventBus::new),
             connection_manager,
             game_service,
             player_mapping,
@@ -479,7 +479,7 @@ pub mod test_utils {
             AppState {
                 session_service,
                 room_service,
-                event_bus: self.event_bus.unwrap_or_else(|| EventBus::new()),
+                event_bus: self.event_bus.unwrap_or_else(EventBus::new),
                 connection_manager: self
                     .connection_manager
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),

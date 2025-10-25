@@ -577,7 +577,7 @@ mod tests {
         // Try to join the full room
         let request = Request::builder()
             .method("POST")
-            .uri(&format!("/room/{}", created_room.id))
+            .uri(format!("/room/{}", created_room.id))
             .body(Body::empty())
             .unwrap();
 

@@ -16,6 +16,12 @@ pub struct MockConnectionManager {
     name_to_uuid: Arc<RwLock<HashMap<String, String>>>,
 }
 
+impl Default for MockConnectionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockConnectionManager {
     pub fn new() -> Self {
         Self {

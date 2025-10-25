@@ -40,6 +40,12 @@ pub struct TestSetupBuilder {
     bot_manager: Arc<BotManager>,
 }
 
+impl Default for TestSetupBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestSetupBuilder {
     pub fn new() -> Self {
         Self {

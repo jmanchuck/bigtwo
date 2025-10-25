@@ -26,6 +26,12 @@ pub struct GameBuilder {
     player_data: Vec<(String, String, Vec<Card>)>, // (name, uuid, cards)
 }
 
+impl Default for GameBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GameBuilder {
     pub fn new() -> Self {
         Self {

@@ -2,6 +2,12 @@ use super::super::{CalculationContext, CollectedData, ScoreCalculator};
 
 pub struct TenPlusMultiplierCalculator;
 
+impl Default for TenPlusMultiplierCalculator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TenPlusMultiplierCalculator {
     pub fn new() -> Self {
         Self

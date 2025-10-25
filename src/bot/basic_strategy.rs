@@ -9,6 +9,12 @@ use super::types::BotStrategy;
 /// Basic bot strategy that plays the lowest valid cards
 pub struct BasicBotStrategy;
 
+impl Default for BasicBotStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BasicBotStrategy {
     pub fn new() -> Self {
         Self

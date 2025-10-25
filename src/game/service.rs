@@ -84,7 +84,7 @@ impl GameService {
         self.game_repository
             .get_game(room_id)
             .await
-            .ok_or_else(|| AppError::Internal)
+            .ok_or(AppError::Internal)
     }
 
     /// Try to play a move for a player in the specified room

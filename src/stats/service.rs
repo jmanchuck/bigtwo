@@ -254,6 +254,82 @@ impl StatsServiceBuilder {
     }
 }
 
+pub struct StatsRoomSubscriber {
+    stats_service: Arc<StatsService>,
+    game_service: Arc<GameService>,
+    room_service: Arc<RoomService>,
+    event_bus: crate::event::EventBus,
+}
+
+impl StatsRoomSubscriber {
+    pub fn new(
+        stats_service: Arc<StatsService>,
+        game_service: Arc<GameService>,
+        room_service: Arc<RoomService>,
+        event_bus: crate::event::EventBus,
+    ) -> Self {
+        Self {
+            stats_service,
+            game_service,
+            room_service,
+            event_bus,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl RoomEventHandler for StatsRoomSubscriber {
+    async fn handle_room_event(
+        &self,
+        room_id: &str,
+        event: RoomEvent,
+    ) -> Result<(), RoomEventError> {
+        match event {
+            RoomEvent::GameWon { winner, .. } => {
+                if let Some(game) = self.game_service.get_game(room_id).await {
+                    let result = self
+                        .stats_service
+                        .process_completed_game(room_id, &game, &winner)
+                        .await;
+                    match result {
+                        Ok((_game_result, room_stats)) => {
+                            // Emit StatsUpdated event so WebSocket subscribers can broadcast
+                            self.event_bus
+                                .emit_to_room(room_id, RoomEvent::StatsUpdated { room_stats })
+                                .await;
+                        }
+                        Err(err) => {
+                            tracing::error!(
+                                ?err,
+                                room_id,
+                                "Failed to process game completion for stats"
+                            );
+                        }
+                    }
+                }
+            }
+            RoomEvent::PlayerLeft { .. } => match self.room_service.get_room(room_id).await {
+                Ok(Some(room)) if room.player_uuids.is_empty() => {
+                    if let Err(err) = self.stats_service.reset_room_stats(room_id).await {
+                        tracing::error!(?err, room_id, "Failed to reset stats after room emptied");
+                    }
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    tracing::error!(?err, room_id, "Failed to load room for stats reset");
+                }
+            },
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn handler_name(&self) -> &'static str {
+        "StatsRoomSubscriber"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,81 +520,5 @@ mod tests {
 
         let call_count = *test_collector.calls.lock().await;
         assert_eq!(call_count, 1);
-    }
-}
-
-pub struct StatsRoomSubscriber {
-    stats_service: Arc<StatsService>,
-    game_service: Arc<GameService>,
-    room_service: Arc<RoomService>,
-    event_bus: crate::event::EventBus,
-}
-
-impl StatsRoomSubscriber {
-    pub fn new(
-        stats_service: Arc<StatsService>,
-        game_service: Arc<GameService>,
-        room_service: Arc<RoomService>,
-        event_bus: crate::event::EventBus,
-    ) -> Self {
-        Self {
-            stats_service,
-            game_service,
-            room_service,
-            event_bus,
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl RoomEventHandler for StatsRoomSubscriber {
-    async fn handle_room_event(
-        &self,
-        room_id: &str,
-        event: RoomEvent,
-    ) -> Result<(), RoomEventError> {
-        match event {
-            RoomEvent::GameWon { winner, .. } => {
-                if let Some(game) = self.game_service.get_game(room_id).await {
-                    let result = self
-                        .stats_service
-                        .process_completed_game(room_id, &game, &winner)
-                        .await;
-                    match result {
-                        Ok((_game_result, room_stats)) => {
-                            // Emit StatsUpdated event so WebSocket subscribers can broadcast
-                            self.event_bus
-                                .emit_to_room(room_id, RoomEvent::StatsUpdated { room_stats })
-                                .await;
-                        }
-                        Err(err) => {
-                            tracing::error!(
-                                ?err,
-                                room_id,
-                                "Failed to process game completion for stats"
-                            );
-                        }
-                    }
-                }
-            }
-            RoomEvent::PlayerLeft { .. } => match self.room_service.get_room(room_id).await {
-                Ok(Some(room)) if room.player_uuids.is_empty() => {
-                    if let Err(err) = self.stats_service.reset_room_stats(room_id).await {
-                        tracing::error!(?err, room_id, "Failed to reset stats after room emptied");
-                    }
-                }
-                Ok(_) => {}
-                Err(err) => {
-                    tracing::error!(?err, room_id, "Failed to load room for stats reset");
-                }
-            },
-            _ => {}
-        }
-
-        Ok(())
-    }
-
-    fn handler_name(&self) -> &'static str {
-        "StatsRoomSubscriber"
     }
 }

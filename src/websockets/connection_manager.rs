@@ -100,7 +100,7 @@ mod tests {
         manager.add_connection("u2".to_string(), tx2).await;
 
         manager
-            .send_to_players(&vec!["u1".to_string(), "u2".to_string()], "msg")
+            .send_to_players(&["u1".to_string(), "u2".to_string()], "msg")
             .await;
 
         let a = rx1.recv().await.unwrap();

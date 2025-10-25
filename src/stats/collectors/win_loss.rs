@@ -6,6 +6,12 @@ use super::super::{CollectedData, StatCollector, StatsError};
 
 pub struct WinLossCollector;
 
+impl Default for WinLossCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WinLossCollector {
     pub fn new() -> Self {
         Self

@@ -6,6 +6,12 @@ use super::super::{CollectedData, StatCollector, StatsError};
 
 pub struct CardsRemainingCollector;
 
+impl Default for CardsRemainingCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CardsRemainingCollector {
     pub fn new() -> Self {
         Self
