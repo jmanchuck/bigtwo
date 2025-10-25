@@ -13,12 +13,15 @@ This is the Rust backend for Big Two, a real-time multiplayer card game. Built w
 ./scripts/dev.sh --postgres    # Force PostgreSQL
 ./scripts/dev.sh --memory      # Force in-memory storage
 
-# Build and test
+# Build and test (IMPORTANT: Always run these before committing)
 cargo check                    # Fast compile check
-cargo test                     # Unit tests
-cargo test -- --ignored       # Integration tests
-cargo clippy                   # Lint
-cargo fmt                      # Format
+cargo test                     # Run unit tests
+cargo test -- --ignored        # Run integration tests (requires DB)
+cargo test test_name -- --nocapture  # Run single test with output
+cargo clippy                   # Lint (must pass with no warnings)
+cargo clippy -- -D warnings    # Treat warnings as errors
+cargo fmt                      # Format code
+cargo fmt -- --check           # Check formatting without modifying
 
 # Database (when using PostgreSQL)
 sqlx migrate run              # Apply migrations
@@ -27,6 +30,11 @@ sqlx migrate add <name>       # Create migration
 # Manual testing
 ./scripts/test-session.sh     # Test REST endpoints
 ```
+
+**IMPORTANT**: Before submitting any code changes:
+1. Run `cargo test` - All tests must pass
+2. Run `cargo clippy` - All clippy warnings must be fixed
+3. Run `cargo fmt` - Code must be properly formatted
 
 ## Architecture Overview
 
@@ -86,6 +94,12 @@ src/
 │   ├── bot_room_subscriber.rs # Bot event handling
 │   ├── handlers.rs          # REST endpoints for bot operations
 │   └── types.rs             # Bot-related types
+├── stats/                    # Game statistics tracking system
+│   ├── models.rs            # Data structures (GameResult, RoomStats, PlayerStats)
+│   ├── service.rs           # Stats service and room subscriber
+│   ├── repository.rs        # Stats storage (in-memory with per-room locking)
+│   ├── collectors/          # Data collectors (cards remaining, win/loss)
+│   └── calculators/         # Score calculators (card count, 10+ multiplier)
 └── user/                     # User management
     └── mapping_service.rs   # Player ID to username mapping
 ```
@@ -107,9 +121,13 @@ Tracks WebSocket connections per room for message broadcasting. Manages connecti
 ### BotManager (bot/manager.rs)
 Manages AI bot players in rooms. Handles bot creation, move generation, and lifecycle. Bots use basic strategy to play valid moves.
 
+### StatsService (stats/service.rs)
+Tracks game statistics per room. Uses collector pattern for data gathering and calculator pattern for score computation. Automatic reset when room empties.
+
 ### Repository Pattern
 - **SessionRepository**: JWT session storage (in-memory or PostgreSQL)
 - **RoomRepository**: Game room management (in-memory only)
+- **StatsRepository**: Per-room statistics (in-memory with per-room locking)
 
 ## Big Two Game Rules
 
@@ -126,14 +144,16 @@ Manages AI bot players in rooms. Handles bot creation, move generation, and life
 - `POST /room` - Create room (returns pet-name ID)
 - `GET /rooms` - List all rooms
 - `GET /room/{id}` - Get room details
+- `GET /room/{id}/stats` - Get current stats for room (games played, player stats)
 - `POST /room/{id}/join` - Join room (authenticated)
 - `DELETE /room/{id}` - Delete room (host only)
 - `POST /room/{id}/bot/add` - Add AI bot to room
+- `DELETE /room/{id}/bot/{bot_uuid}` - Remove bot from room
 
 ### WebSocket
-- `GET /ws/{room_id}?session_id={session_id}` - Real-time game communication
-- Message types: `CHAT`, `MOVE`, `LEAVE`, `START_GAME` (client→server)
-- Message types: `PLAYERS_LIST`, `MOVE_PLAYED`, `TURN_CHANGE`, `GAME_WON`, etc. (server→client)
+- `GET /ws/{room_id}` - Real-time game communication (JWT auth via `Sec-WebSocket-Protocol` header)
+- Message types: `CHAT`, `MOVE`, `LEAVE`, `START_GAME`, `READY` (client→server)
+- Message types: `PLAYERS_LIST`, `MOVE_PLAYED`, `TURN_CHANGE`, `GAME_STARTED`, `GAME_WON`, `GAME_RESET`, `BOT_ADDED`, `BOT_REMOVED`, `STATS_UPDATED`, `ERROR`, `HOST_CHANGE` (server→client)
 
 ## Testing
 
@@ -168,10 +188,25 @@ cargo test test_name -- --nocapture  # Single test with output
 3. **Event Processing** → Multiple subscribers react to events:
    - `game/game_room_subscriber.rs` - Game logic (moves, turns, win conditions)
    - `bot/bot_room_subscriber.rs` - Bot responses to game events
+   - `stats/service.rs` (StatsRoomSubscriber) - Statistics tracking
    - `websockets/websocket_room_subscriber.rs` - WebSocket broadcasts
 4. **WebSocket Response** → Events trigger broadcasts to all players in room
 
 This separation allows game logic to be independent of WebSocket implementation and enables easy addition of bots and other event subscribers.
+
+## Code Quality Requirements
+
+**CRITICAL**: Always run these commands before committing:
+1. **`cargo test`** - All unit tests must pass
+2. **`cargo clippy`** - Zero warnings allowed (CI enforces `-D warnings`)
+3. **`cargo fmt`** - Code must be formatted
+
+**Code Style Guidelines**:
+- **Idiomatic Rust**: Use `Result`, `Option`, `?`, traits, proper error handling
+- **No unsafe code**: Use clippy-friendly patterns
+- **Event-driven patterns**: Emit events through EventBus rather than direct function calls
+- **Dependency injection**: Use traits for services to enable mocking in tests
+- **Focus on the task**: Do not change unrelated code even if it could be improved
 
 ## Bot System
 
@@ -180,3 +215,14 @@ The backend includes AI bots for testing and single-player gameplay:
 - **Bot strategy**: Basic strategy that plays valid moves automatically
 - **Event-driven**: Bots respond to `TurnChange` events with automatic moves
 - **Integration**: Bots appear as regular players to other clients
+
+## Stats System
+
+The backend tracks game statistics per room:
+- **Data collectors**: `CardsRemainingCollector`, `WinLossCollector` gather game data
+- **Score calculators**: `CardCountScoreCalculator`, `TenPlusMultiplierCalculator` compute scores with priorities
+- **Per-room locking**: Thread-safe statistics updates using per-room mutexes
+- **Automatic reset**: Stats reset when room becomes empty (no human players)
+- **Bot filtering**: Bots are excluded from statistics tracking
+- **REST endpoint**: `GET /room/{id}/stats` to fetch current statistics
+- **WebSocket updates**: `STATS_UPDATED` message broadcast after each game
