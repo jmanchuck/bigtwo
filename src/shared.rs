@@ -12,6 +12,7 @@ use crate::room::repository::RoomRepository;
 use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
 use crate::session::service::SessionService;
+use crate::stats::{service::StatsService, InMemoryStatsRepository, StatsRepository};
 use crate::websockets::ConnectionManager;
 use crate::{event::EventBus, game::GameService, user::PlayerMappingService};
 
@@ -25,6 +26,7 @@ pub struct AppState {
     pub game_service: Arc<GameService>,
     pub player_mapping: Arc<dyn PlayerMappingService>,
     pub bot_manager: Arc<BotManager>,
+    pub stats_service: Arc<StatsService>,
 }
 
 impl AppState {
@@ -36,6 +38,7 @@ impl AppState {
         game_service: Arc<GameService>,
         player_mapping: Arc<dyn PlayerMappingService>,
         bot_manager: Arc<BotManager>,
+        stats_service: Arc<StatsService>,
     ) -> Self {
         Self {
             session_service,
@@ -45,6 +48,7 @@ impl AppState {
             game_service,
             player_mapping,
             bot_manager,
+            stats_service,
         }
     }
 
@@ -64,6 +68,8 @@ pub struct AppStateBuilder {
     player_mapping: Option<Arc<dyn PlayerMappingService>>,
     event_bus: Option<EventBus>,
     bot_manager: Option<Arc<BotManager>>,
+    stats_repository: Option<Arc<dyn StatsRepository>>,
+    stats_service: Option<Arc<StatsService>>,
 }
 
 #[derive(Error, Debug)]
@@ -84,6 +90,8 @@ impl AppStateBuilder {
             player_mapping: None,
             event_bus: None,
             bot_manager: None,
+            stats_repository: None,
+            stats_service: None,
         }
     }
 
@@ -137,6 +145,16 @@ impl AppStateBuilder {
         self
     }
 
+    pub fn with_stats_repository(mut self, repository: Arc<dyn StatsRepository>) -> Self {
+        self.stats_repository = Some(repository);
+        self
+    }
+
+    pub fn with_stats_service(mut self, stats_service: Arc<StatsService>) -> Self {
+        self.stats_service = Some(stats_service);
+        self
+    }
+
     /// Build AppState with validation
     pub fn build(self) -> Result<AppState, AppStateBuilderError> {
         let player_mapping = self
@@ -166,6 +184,18 @@ impl AppStateBuilder {
             .bot_manager
             .unwrap_or_else(|| Arc::new(BotManager::new()));
 
+        let stats_repository = self.stats_repository.unwrap_or_else(|| {
+            Arc::new(InMemoryStatsRepository::new()) as Arc<dyn StatsRepository>
+        });
+
+        let stats_service = self.stats_service.unwrap_or_else(|| {
+            Arc::new(
+                StatsService::builder(stats_repository.clone())
+                    .with_bot_manager(bot_manager.clone())
+                    .build(),
+            )
+        });
+
         Ok(AppState {
             session_service,
             room_service,
@@ -174,6 +204,7 @@ impl AppStateBuilder {
             game_service,
             player_mapping,
             bot_manager,
+            stats_service,
         })
     }
 
@@ -216,6 +247,18 @@ impl AppStateBuilder {
             .bot_manager
             .unwrap_or_else(|| Arc::new(BotManager::new()));
 
+        let stats_repository = self.stats_repository.unwrap_or_else(|| {
+            Arc::new(InMemoryStatsRepository::new()) as Arc<dyn StatsRepository>
+        });
+
+        let stats_service = self.stats_service.unwrap_or_else(|| {
+            Arc::new(
+                StatsService::builder(stats_repository.clone())
+                    .with_bot_manager(bot_manager.clone())
+                    .build(),
+            )
+        });
+
         AppState {
             session_service,
             room_service,
@@ -224,6 +267,7 @@ impl AppStateBuilder {
             game_service,
             player_mapping,
             bot_manager,
+            stats_service,
         }
     }
 }
@@ -420,6 +464,18 @@ pub mod test_utils {
                 .bot_manager
                 .unwrap_or_else(|| Arc::new(crate::bot::BotManager::new()));
 
+            let stats_repository = self.stats_repository.unwrap_or_else(|| {
+                Arc::new(InMemoryStatsRepository::new()) as Arc<dyn StatsRepository>
+            });
+
+            let stats_service = self.stats_service.unwrap_or_else(|| {
+                Arc::new(
+                    StatsService::builder(stats_repository.clone())
+                        .with_bot_manager(bot_manager.clone())
+                        .build(),
+                )
+            });
+
             AppState {
                 session_service,
                 room_service,
@@ -430,6 +486,7 @@ pub mod test_utils {
                 game_service,
                 player_mapping,
                 bot_manager,
+                stats_service,
             }
         }
     }

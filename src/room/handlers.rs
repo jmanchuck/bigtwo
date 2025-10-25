@@ -7,11 +7,12 @@ use tracing::{debug, info, instrument};
 
 use super::types::{CreateRoomApiRequest, JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
-    bot::BotRoomSubscriber,
+    bot::{BotManager, BotRoomSubscriber},
     event::{RoomEvent, RoomSubscription},
     game::GameEventRoomSubscriber,
     session::SessionClaims,
     shared::{AppError, AppState},
+    stats::service::StatsRoomSubscriber,
     websockets::WebSocketRoomSubscriber,
 };
 
@@ -86,6 +87,21 @@ pub async fn create_room(
         state.event_bus.clone(),
     );
     let _ = bot_subscription.start().await;
+
+    // Set up stats subscription for this room
+    let stats_subscriber = Arc::new(StatsRoomSubscriber::new(
+        Arc::clone(&state.stats_service),
+        Arc::clone(&state.game_service),
+        Arc::clone(&state.room_service),
+        state.event_bus.clone(),
+    ));
+
+    let stats_subscription = RoomSubscription::new(
+        room_model.id.clone(),
+        stats_subscriber,
+        state.event_bus.clone(),
+    );
+    let _ = stats_subscription.start().await;
     // Map host UUID to display name for response
     let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
     let host_name = state
@@ -248,6 +264,25 @@ pub async fn get_room_details(
     };
 
     Ok(Json(room))
+}
+
+/// HTTP handler for getting room stats
+///
+/// GET /room/{room_id}/stats
+/// Returns current stats for the room
+#[instrument(name = "get_room_stats", skip(state))]
+pub async fn get_room_stats(
+    State(state): State<AppState>,
+    Path(room_id): Path<String>,
+) -> Result<Json<crate::stats::models::RoomStats>, AppError> {
+    let stats = state
+        .stats_service
+        .get_room_stats(&room_id)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get room stats: {}", e)))?
+        .ok_or_else(|| AppError::NotFound(format!("No stats found for room: {}", room_id)))?;
+
+    Ok(Json(stats))
 }
 
 #[cfg(test)]

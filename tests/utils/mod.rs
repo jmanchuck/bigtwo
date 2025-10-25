@@ -9,6 +9,3 @@ pub use assertions::{MessageAssertion, MessageContent};
 pub use game_builders::GameBuilder;
 pub use mocks::MockConnectionManager;
 pub use setup::{TestSetup, TestSetupBuilder};
-
-// Re-export commonly used types
-pub use bigtwo::{event::RoomEvent, websockets::MessageType};

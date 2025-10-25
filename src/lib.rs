@@ -7,6 +7,7 @@ pub mod game;
 pub mod room;
 pub mod session;
 pub mod shared;
+pub mod stats;
 pub mod user;
 pub mod websockets;
 
@@ -16,5 +17,9 @@ pub use event::{EventBus, RoomEvent, RoomSubscription};
 pub use game::GameService;
 pub use room::{models::RoomModel, repository::RoomRepository};
 pub use shared::AppError;
+pub use stats::{
+    models::*, repository::InMemoryStatsRepository, repository::StatsRepository,
+    StatsRoomSubscriber, StatsService,
+};
 pub use user::PlayerMappingService;
 pub use websockets::{ConnectionManager, WebSocketRoomSubscriber};
