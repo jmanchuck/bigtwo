@@ -31,6 +31,7 @@ impl StatsService {
         StatsServiceBuilder::new(repository)
     }
 
+    #[allow(dead_code)] // Public API for inspecting configured collectors
     pub fn collectors(&self) -> Vec<Arc<dyn StatCollector>> {
         self.collectors.clone()
     }
@@ -102,6 +103,8 @@ impl StatsService {
         Ok(())
     }
 
+    /// Calculate scores for all players using registered calculators
+    #[allow(clippy::too_many_arguments)]
     fn calculate_scores(
         &self,
         player_metadata: &[(String, usize)],
@@ -227,11 +230,13 @@ impl StatsServiceBuilder {
         }
     }
 
+    #[allow(dead_code)] // Builder method for adding collectors
     pub fn with_collector(mut self, collector: Arc<dyn StatCollector>) -> Self {
         self.collectors.push(collector);
         self
     }
 
+    #[allow(dead_code)] // Builder method for adding calculators
     pub fn with_calculator(mut self, calculator: Arc<dyn ScoreCalculator>) -> Self {
         self.calculators.push(calculator);
         self

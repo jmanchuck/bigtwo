@@ -42,6 +42,7 @@ pub struct SessionCreator {
 #[derive(Debug)]
 pub struct SessionCreationResult {
     pub session_response: SessionResponse,
+    #[allow(dead_code)] // Reserved for future cleanup logic
     pub cleanup_needed: bool,
 }
 

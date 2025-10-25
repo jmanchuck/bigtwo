@@ -47,5 +47,6 @@ pub trait BotStrategy: Send + Sync {
     async fn decide_move(&self, game: &Game, bot_uuid: &str) -> Option<Vec<Card>>;
 
     /// Get the name of this strategy
+    #[allow(dead_code)] // Trait method for strategy identification
     fn strategy_name(&self) -> &'static str;
 }

@@ -1,3 +1,6 @@
+//! Test action helpers - utilities for interacting with the test environment
+#![allow(dead_code)] // Test utilities may not all be used in every test
+
 use serde_json;
 use tokio::time::{sleep, Duration};
 

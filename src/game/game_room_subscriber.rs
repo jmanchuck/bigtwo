@@ -188,6 +188,7 @@ mod tests {
     };
     use crate::user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService};
 
+    #[allow(dead_code)] // Test helper for building game scenarios
     fn create_test_players() -> Vec<Player> {
         vec![
             Player {
@@ -229,6 +230,7 @@ mod tests {
         ]
     }
 
+    #[allow(dead_code)] // Test helper for building game scenarios
     fn create_test_game() -> Game {
         let players = create_test_players();
         let starting_hands = players

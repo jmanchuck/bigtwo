@@ -49,6 +49,7 @@ pub trait ScoreCalculator: Send + Sync {
 }
 
 pub struct CalculationContext<'a> {
+    #[allow(dead_code)] // Context data for score calculations
     pub game_result: &'a GameResult,
     pub current_scores: &'a std::collections::HashMap<String, i32>,
 }

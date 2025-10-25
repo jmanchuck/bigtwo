@@ -120,6 +120,7 @@ impl BotManager {
     }
 
     /// Get the total number of bots
+    #[allow(dead_code)] // Public API for monitoring bot counts
     pub async fn bot_count(&self) -> usize {
         let bots = self.bots.read().await;
         bots.len()

@@ -219,6 +219,7 @@ impl Game {
     }
 
     /// Get current player (for detailed access)
+    #[allow(dead_code)] // Public API for future use
     pub fn current_player(&self) -> &Player {
         &self.players[self.current_turn]
     }
@@ -264,6 +265,7 @@ impl Game {
         Some(self.players[last_index].uuid.clone())
     }
 
+    #[allow(dead_code)] // Public API for future use
     pub fn get_last_played_hand(&self) -> Option<&Hand> {
         self.played_hands.last()
     }
@@ -272,6 +274,7 @@ impl Game {
         &self.played_hands
     }
 
+    #[allow(dead_code)] // Public API for accessing initial card distribution
     pub fn starting_hands(&self) -> &std::collections::HashMap<String, Vec<Card>> {
         &self.starting_hands
     }

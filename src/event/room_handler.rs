@@ -10,6 +10,7 @@ pub enum RoomEventError {
     RoomNotFound(String),
 
     #[error("Connection error: {0}")]
+    #[allow(dead_code)] // Error variant for future use
     ConnectionError(String),
 
     #[error("Handler error: {0}")]

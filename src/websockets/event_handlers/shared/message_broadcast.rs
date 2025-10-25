@@ -23,6 +23,7 @@ impl MessageBroadcaster {
         Ok(())
     }
 
+    #[allow(dead_code)] // Alternative broadcast method for UUID-based messaging
     pub async fn broadcast_to_room_via_uuids(
         connection_manager: &Arc<dyn ConnectionManager>,
         player_uuids: &[String],

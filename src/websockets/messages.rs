@@ -181,6 +181,7 @@ impl WebSocketMessage {
     }
 
     /// Create an ERROR message
+    #[allow(dead_code)] // Message constructor for error responses
     pub fn error(message: String) -> Self {
         let payload = ErrorPayload { message };
         Self::new(MessageType::Error, serde_json::to_value(payload).unwrap())

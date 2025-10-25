@@ -13,8 +13,10 @@ use crate::shared::AppError;
 pub trait SessionRepository {
     async fn create_session(&self, session: &SessionModel) -> Result<(), AppError>;
     async fn get_session(&self, session_id: &str) -> Result<Option<SessionModel>, AppError>;
+    #[allow(dead_code)] // Trait method for session updates
     async fn update_session(&self, session: &SessionModel) -> Result<(), AppError>;
     async fn delete_session(&self, session_id: &str) -> Result<(), AppError>;
+    #[allow(dead_code)] // Trait method for session cleanup
     async fn cleanup_expired_sessions(&self) -> Result<u64, AppError>;
 }
 
@@ -42,6 +44,7 @@ impl InMemorySessionRepository {
     }
 
     /// Creates an in-memory repository with pre-populated sessions
+    #[allow(dead_code)] // Test helper for pre-populated sessions
     pub fn with_sessions(sessions: Vec<SessionModel>) -> Self {
         let mut session_map = HashMap::new();
         for session in sessions {
@@ -54,11 +57,13 @@ impl InMemorySessionRepository {
     }
 
     /// Returns the current number of sessions in the repository
+    #[allow(dead_code)] // Public API for monitoring session counts
     pub fn session_count(&self) -> usize {
         self.sessions.lock().unwrap().len()
     }
 
     /// Checks if a session exists by ID (useful for debugging)
+    #[allow(dead_code)] // Public API for checking session existence
     pub fn has_session(&self, session_id: &str) -> bool {
         self.sessions.lock().unwrap().contains_key(session_id)
     }

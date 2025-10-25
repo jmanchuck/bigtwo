@@ -11,7 +11,9 @@ use crate::{
 
 pub struct ConnectionEventHandlers {
     room_service: Arc<RoomService>,
+    #[allow(dead_code)] // Reserved for future connection management features
     connection_manager: Arc<dyn ConnectionManager>,
+    #[allow(dead_code)] // Reserved for future player mapping features
     player_mapping: Arc<dyn PlayerMappingService>,
     event_bus: EventBus,
     bot_manager: Arc<BotManager>,

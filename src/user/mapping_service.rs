@@ -23,6 +23,7 @@ pub trait PlayerMappingService: Send + Sync {
     async fn remove_player(&self, uuid: &str) -> bool;
 
     /// Get all active player mappings (for debugging/monitoring)
+    #[allow(dead_code)] // Trait method for debugging/monitoring
     async fn get_all_mappings(&self) -> Vec<(String, String)>; // (uuid, playername) pairs
 }
 
@@ -52,6 +53,7 @@ impl InMemoryPlayerMappingService {
     }
 
     /// Generate a new UUID for a player
+    #[allow(dead_code)] // Utility function for generating player UUIDs
     pub fn generate_uuid() -> String {
         Uuid::new_v4().to_string()
     }

@@ -33,6 +33,7 @@ impl RoomEventHandlers {
         }
     }
 
+    #[allow(dead_code)] // Utility function for future use
     fn cards_to_strings(cards: &[Card]) -> Vec<String> {
         cards.iter().map(|c| c.to_string()).collect()
     }

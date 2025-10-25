@@ -26,8 +26,11 @@ pub trait MessageHandler: Send + Sync {
 
 #[derive(Debug)]
 pub enum SocketError {
+    #[allow(dead_code)] // Error variant for future use
     ConnectionClosed,
+    #[allow(dead_code)] // Error message for debugging
     SendFailed(String),
+    #[allow(dead_code)] // Error message for debugging
     ReceiveFailed(String),
 }
 

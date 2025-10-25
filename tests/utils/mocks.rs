@@ -1,3 +1,6 @@
+//! Mock implementations for testing
+#![allow(dead_code)] // Test utilities may not all be used in every test
+
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;

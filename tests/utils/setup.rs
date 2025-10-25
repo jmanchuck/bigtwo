@@ -1,3 +1,6 @@
+//! Test setup utilities - builders and infrastructure for test environments
+#![allow(dead_code)] // Test utilities may not all be used in every test
+
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 

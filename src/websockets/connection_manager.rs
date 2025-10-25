@@ -15,6 +15,7 @@ pub trait ConnectionManager: Send + Sync {
 
     async fn send_to_player(&self, uuid: &str, message: &str);
 
+    #[allow(dead_code)] // Trait method for batch messaging
     async fn send_to_players(&self, uuids: &[String], message: &str);
 }
 

@@ -1,3 +1,6 @@
+//! Game scenario builders - pre-configured game states for testing
+#![allow(dead_code)] // Test utilities may not all be used in every test
+
 use std::sync::Arc;
 
 use bigtwo::{

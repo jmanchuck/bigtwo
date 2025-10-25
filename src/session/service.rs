@@ -17,6 +17,7 @@ pub struct SessionService {
     session_creator: SessionCreator,
     token_config: TokenConfig,
     repository: Arc<dyn SessionRepository + Send + Sync>,
+    #[allow(dead_code)] // Reserved for future player mapping features
     player_mapping: Arc<dyn PlayerMappingService>,
     session_to_player_uuid: Arc<RwLock<HashMap<String, String>>>, // session_id -> player_uuid
 }

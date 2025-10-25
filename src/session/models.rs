@@ -34,16 +34,19 @@ impl SessionModel {
     }
 
     /// Extends the session expiration by the given number of days
+    #[allow(dead_code)] // Public API for session management
     pub fn extend_expiration(&mut self, days: i64) {
         self.expires_at = Utc::now() + chrono::Duration::days(days);
     }
 
     /// Updates the last accessed timestamp
+    #[allow(dead_code)] // Reserved for session activity tracking
     pub fn touch(&mut self) {
         self.last_accessed = Some(Utc::now());
     }
 
     /// Gets the last accessed time, defaulting to created_at if never accessed
+    #[allow(dead_code)] // Reserved for session activity tracking
     pub fn get_last_accessed(&self) -> DateTime<Utc> {
         self.last_accessed.unwrap_or(self.created_at)
     }

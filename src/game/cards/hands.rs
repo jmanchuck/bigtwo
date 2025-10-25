@@ -9,8 +9,10 @@ pub enum HandError {
     #[error("Invalid hand type")]
     InvalidHandType,
     #[error("Cards not sorted")]
+    #[allow(dead_code)] // Error variant for validation
     CardsNotSorted,
     #[error("Cannot compare across types")]
+    #[allow(dead_code)] // Error variant for validation
     CannotCompareAcrossTypes,
 }
 
@@ -503,6 +505,7 @@ impl Hand {
     }
 
     /// Get the hand type name for display
+    #[allow(dead_code)] // Public API for UI display
     pub fn hand_type_name(&self) -> &'static str {
         match self {
             Hand::Pass => "Pass",
@@ -546,6 +549,7 @@ impl Hand {
 /// Compare two sets of played cards to determine if the first can beat the second
 /// Returns Ok(true) if played_cards can beat current_cards, Ok(false) otherwise
 /// Empty played_cards represents a pass
+#[allow(dead_code)] // Public API for future use
 pub fn compare_played_cards(
     played_cards: &[Card],
     current_cards: &[Card],

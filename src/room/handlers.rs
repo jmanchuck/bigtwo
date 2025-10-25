@@ -59,7 +59,8 @@ pub async fn create_room(
         room_subscriber,
         state.event_bus.clone(),
     );
-    let _ = room_subscription.start().await;
+    // Start background task - we don't need to track the JoinHandle
+    drop(room_subscription.start().await);
 
     // Set up game event subscription for this room
     let game_subscriber = Arc::new(GameEventRoomSubscriber::new(
@@ -72,7 +73,8 @@ pub async fn create_room(
         game_subscriber,
         state.event_bus.clone(),
     );
-    let _ = game_subscription.start().await;
+    // Start background task - we don't need to track the JoinHandle
+    drop(game_subscription.start().await);
 
     // Set up bot subscription for this room
     let bot_subscriber = Arc::new(BotRoomSubscriber::new(
@@ -86,7 +88,8 @@ pub async fn create_room(
         bot_subscriber,
         state.event_bus.clone(),
     );
-    let _ = bot_subscription.start().await;
+    // Start background task - we don't need to track the JoinHandle
+    drop(bot_subscription.start().await);
 
     // Set up stats subscription for this room
     let stats_subscriber = Arc::new(StatsRoomSubscriber::new(
@@ -101,7 +104,8 @@ pub async fn create_room(
         stats_subscriber,
         state.event_bus.clone(),
     );
-    let _ = stats_subscription.start().await;
+    // Start background task - we don't need to track the JoinHandle
+    drop(stats_subscription.start().await);
     // Map host UUID to display name for response
     let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
     let host_name = state

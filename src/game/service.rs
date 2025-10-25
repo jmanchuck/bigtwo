@@ -139,6 +139,7 @@ impl GameService {
     }
 
     /// Create a new game with predetermined card distributions
+    #[allow(dead_code)] // Public API for testing/debugging scenarios
     pub async fn create_game_with_cards(
         &self,
         room_id: &str,
@@ -173,6 +174,7 @@ mod tests {
         ]
     }
 
+    #[allow(dead_code)] // Test helper for building game scenarios
     fn create_test_game() -> Game {
         let players = vec![
             Player {

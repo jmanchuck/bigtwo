@@ -1,3 +1,6 @@
+//! Test assertion helpers - fluent API for verifying test expectations
+#![allow(dead_code)] // Test utilities may not all be used in every test
+
 use serde_json;
 
 use bigtwo::websockets::{MessageType, WebSocketMessage};

@@ -30,6 +30,9 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Direct constructor - prefer using `AppState::builder()` for better ergonomics
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)] // Public API - prefer builder pattern
     pub fn new(
         session_service: Arc<SessionService>,
         room_service: Arc<RoomService>,
@@ -115,6 +118,7 @@ impl AppStateBuilder {
 
     /// Convenience method for providing a room repository
     /// This creates a RoomService with the given repository and player mapping
+    #[allow(dead_code)] // Builder method for test configuration
     pub fn with_room_repository(mut self, repo: Arc<dyn RoomRepository + Send + Sync>) -> Self {
         self.room_service = Some(Arc::new(RoomService::new(repo)));
         self
@@ -211,6 +215,7 @@ impl AppStateBuilder {
     /// Build AppState without validation (for backward compatibility)
     /// This method provides defaults for missing dependencies
     #[cfg(test)]
+    #[allow(dead_code)] // Test helper for simplified test setup
     pub fn build_with_defaults(self) -> AppState {
         use crate::user::mapping_service::InMemoryPlayerMappingService;
 
@@ -262,7 +267,7 @@ impl AppStateBuilder {
         AppState {
             session_service,
             room_service,
-            event_bus: self.event_bus.unwrap_or_else(EventBus::new),
+            event_bus: self.event_bus.unwrap_or_default(),
             connection_manager,
             game_service,
             player_mapping,
@@ -479,7 +484,7 @@ pub mod test_utils {
             AppState {
                 session_service,
                 room_service,
-                event_bus: self.event_bus.unwrap_or_else(EventBus::new),
+                event_bus: self.event_bus.unwrap_or_default(),
                 connection_manager: self
                     .connection_manager
                     .unwrap_or_else(|| Arc::new(DummyConnectionManager)),
