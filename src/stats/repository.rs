@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::{models::RoomStats, GameResult, StatsError};
 #[cfg(test)]
 use super::PlayerGameResult;
+use super::{models::RoomStats, GameResult, StatsError};
 
 #[async_trait]
 pub trait StatsRepository: Send + Sync {

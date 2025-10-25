@@ -585,8 +585,10 @@ mod tests {
         assert!(hand1.can_beat(&hand2));
 
         // Test that we can't compare across types
-        let pair = Hand::from_cards(&[Card::new(Rank::Three, Suit::Hearts),
-            Card::new(Rank::Three, Suit::Spades)])
+        let pair = Hand::from_cards(&[
+            Card::new(Rank::Three, Suit::Hearts),
+            Card::new(Rank::Three, Suit::Spades),
+        ])
         .unwrap();
 
         assert!(!hand1.can_beat(&pair)); // Single cannot beat pair
@@ -595,19 +597,25 @@ mod tests {
 
     #[test]
     fn test_pair_hand() {
-        let pair1 = Hand::from_cards(&[Card::new(Rank::King, Suit::Hearts),
-            Card::new(Rank::King, Suit::Spades)])
+        let pair1 = Hand::from_cards(&[
+            Card::new(Rank::King, Suit::Hearts),
+            Card::new(Rank::King, Suit::Spades),
+        ])
         .unwrap();
 
-        let pair2 = Hand::from_cards(&[Card::new(Rank::Queen, Suit::Diamonds),
-            Card::new(Rank::Queen, Suit::Clubs)])
+        let pair2 = Hand::from_cards(&[
+            Card::new(Rank::Queen, Suit::Diamonds),
+            Card::new(Rank::Queen, Suit::Clubs),
+        ])
         .unwrap();
 
         assert!(pair1.can_beat(&pair2));
 
         // Test same rank pairs with different suits
-        let pair3 = Hand::from_cards(&[Card::new(Rank::King, Suit::Diamonds),
-            Card::new(Rank::King, Suit::Clubs)])
+        let pair3 = Hand::from_cards(&[
+            Card::new(Rank::King, Suit::Diamonds),
+            Card::new(Rank::King, Suit::Clubs),
+        ])
         .unwrap();
 
         assert!(pair1.can_beat(&pair3)); // Spades beats Clubs for the high card
@@ -615,14 +623,18 @@ mod tests {
 
     #[test]
     fn test_triple_hand() {
-        let triple1 = Hand::from_cards(&[Card::new(Rank::King, Suit::Hearts),
+        let triple1 = Hand::from_cards(&[
+            Card::new(Rank::King, Suit::Hearts),
             Card::new(Rank::King, Suit::Spades),
-            Card::new(Rank::King, Suit::Diamonds)])
+            Card::new(Rank::King, Suit::Diamonds),
+        ])
         .unwrap();
 
-        let triple2 = Hand::from_cards(&[Card::new(Rank::Queen, Suit::Hearts),
+        let triple2 = Hand::from_cards(&[
+            Card::new(Rank::Queen, Suit::Hearts),
             Card::new(Rank::Queen, Suit::Spades),
-            Card::new(Rank::Queen, Suit::Diamonds)])
+            Card::new(Rank::Queen, Suit::Diamonds),
+        ])
         .unwrap();
 
         assert!(triple1.can_beat(&triple2));
@@ -630,11 +642,13 @@ mod tests {
 
     #[test]
     fn test_construct_invalid_straight() {
-        let straight = Hand::from_cards(&[Card::new(Rank::Jack, Suit::Hearts),
+        let straight = Hand::from_cards(&[
+            Card::new(Rank::Jack, Suit::Hearts),
             Card::new(Rank::Queen, Suit::Spades),
             Card::new(Rank::King, Suit::Diamonds),
             Card::new(Rank::Ace, Suit::Clubs),
-            Card::new(Rank::Two, Suit::Hearts)]);
+            Card::new(Rank::Two, Suit::Hearts),
+        ]);
 
         assert!(straight.is_err());
         assert_eq!(straight.err(), Some(HandError::InvalidHandType));
@@ -642,22 +656,26 @@ mod tests {
 
     #[test]
     fn test_construct_valid_straight_with_ace() {
-        let straight = Hand::from_cards(&[Card::new(Rank::Ace, Suit::Hearts),
+        let straight = Hand::from_cards(&[
+            Card::new(Rank::Ace, Suit::Hearts),
             Card::new(Rank::Two, Suit::Spades),
             Card::new(Rank::Three, Suit::Diamonds),
             Card::new(Rank::Four, Suit::Clubs),
-            Card::new(Rank::Five, Suit::Hearts)]);
+            Card::new(Rank::Five, Suit::Hearts),
+        ]);
 
         assert!(straight.is_ok());
     }
 
     #[test]
     fn test_construct_valid_ace_high_straight() {
-        let straight = Hand::from_cards(&[Card::new(Rank::Ten, Suit::Hearts),
+        let straight = Hand::from_cards(&[
+            Card::new(Rank::Ten, Suit::Hearts),
             Card::new(Rank::Jack, Suit::Spades),
             Card::new(Rank::Queen, Suit::Diamonds),
             Card::new(Rank::King, Suit::Clubs),
-            Card::new(Rank::Ace, Suit::Hearts)]);
+            Card::new(Rank::Ace, Suit::Hearts),
+        ]);
 
         assert!(straight.is_ok());
         match straight.unwrap() {
@@ -668,11 +686,13 @@ mod tests {
 
     #[test]
     fn test_straight() {
-        let straight = Hand::from_cards(&[Card::new(Rank::Six, Suit::Clubs),
+        let straight = Hand::from_cards(&[
+            Card::new(Rank::Six, Suit::Clubs),
             Card::new(Rank::Three, Suit::Hearts),
             Card::new(Rank::Five, Suit::Diamonds),
             Card::new(Rank::Four, Suit::Spades),
-            Card::new(Rank::Seven, Suit::Hearts)])
+            Card::new(Rank::Seven, Suit::Hearts),
+        ])
         .unwrap();
 
         match straight {
@@ -770,11 +790,13 @@ mod tests {
             Card::new(Rank::Nine, Suit::Spades)])
         .unwrap(), false)]
     fn test_straight_comparison_with_straight(#[case] other_hand: Hand, #[case] expected: bool) {
-        let straight = Hand::from_cards(&[Card::new(Rank::Five, Suit::Hearts),
+        let straight = Hand::from_cards(&[
+            Card::new(Rank::Five, Suit::Hearts),
             Card::new(Rank::Six, Suit::Spades),
             Card::new(Rank::Seven, Suit::Diamonds),
             Card::new(Rank::Eight, Suit::Clubs),
-            Card::new(Rank::Nine, Suit::Hearts)])
+            Card::new(Rank::Nine, Suit::Hearts),
+        ])
         .unwrap();
 
         assert_eq!(straight.can_beat(&other_hand), expected);
@@ -800,11 +822,13 @@ mod tests {
             Card::new(Rank::King, Suit::Hearts)])
         .unwrap(), false)]
     fn test_flush_comparison_with_flush(#[case] other_hand: Hand, #[case] expected: bool) {
-        let flush = Hand::from_cards(&[Card::new(Rank::Three, Suit::Hearts),
+        let flush = Hand::from_cards(&[
+            Card::new(Rank::Three, Suit::Hearts),
             Card::new(Rank::Six, Suit::Hearts),
             Card::new(Rank::Seven, Suit::Hearts),
             Card::new(Rank::Eight, Suit::Hearts),
-            Card::new(Rank::Jack, Suit::Hearts)])
+            Card::new(Rank::Jack, Suit::Hearts),
+        ])
         .unwrap();
 
         assert_eq!(flush.can_beat(&other_hand), expected);
@@ -842,11 +866,13 @@ mod tests {
             Card::new(Rank::Seven, Suit::Hearts)])
         .unwrap(), false)]
     fn test_four_of_a_kind_comparison(#[case] other_hand: Hand, #[case] expected: bool) {
-        let four_of_a_kind = Hand::from_cards(&[Card::new(Rank::Ace, Suit::Hearts),
+        let four_of_a_kind = Hand::from_cards(&[
+            Card::new(Rank::Ace, Suit::Hearts),
             Card::new(Rank::Ace, Suit::Spades),
             Card::new(Rank::Ace, Suit::Diamonds),
             Card::new(Rank::Ace, Suit::Clubs),
-            Card::new(Rank::King, Suit::Hearts)])
+            Card::new(Rank::King, Suit::Hearts),
+        ])
         .unwrap();
 
         assert_eq!(four_of_a_kind.can_beat(&other_hand), expected);
@@ -854,11 +880,13 @@ mod tests {
 
     #[test]
     fn test_full_house() {
-        let full_house = Hand::from_cards(&[Card::new(Rank::Three, Suit::Hearts),
+        let full_house = Hand::from_cards(&[
+            Card::new(Rank::Three, Suit::Hearts),
             Card::new(Rank::Three, Suit::Spades),
             Card::new(Rank::Three, Suit::Diamonds),
             Card::new(Rank::King, Suit::Clubs),
-            Card::new(Rank::King, Suit::Hearts)])
+            Card::new(Rank::King, Suit::Hearts),
+        ])
         .unwrap();
 
         match full_house {
@@ -884,11 +912,13 @@ mod tests {
             Card::new(Rank::King, Suit::Hearts)])
         .unwrap(), false)]
     fn test_full_house_comparison(#[case] other_hand: Hand, #[case] expected: bool) {
-        let full_house = Hand::from_cards(&[Card::new(Rank::Five, Suit::Hearts),
+        let full_house = Hand::from_cards(&[
+            Card::new(Rank::Five, Suit::Hearts),
             Card::new(Rank::Five, Suit::Spades),
             Card::new(Rank::Five, Suit::Diamonds),
             Card::new(Rank::King, Suit::Clubs),
-            Card::new(Rank::King, Suit::Diamonds)])
+            Card::new(Rank::King, Suit::Diamonds),
+        ])
         .unwrap();
 
         assert_eq!(full_house.can_beat(&other_hand), expected);
@@ -949,15 +979,19 @@ mod tests {
     #[test]
     fn test_invalid_hands() {
         // Invalid pair (different ranks)
-        let result = Hand::from_cards(&[Card::new(Rank::King, Suit::Hearts),
-            Card::new(Rank::Queen, Suit::Spades)]);
+        let result = Hand::from_cards(&[
+            Card::new(Rank::King, Suit::Hearts),
+            Card::new(Rank::Queen, Suit::Spades),
+        ]);
         assert!(result.is_err());
 
         // Invalid hand size
-        let result = Hand::from_cards(&[Card::new(Rank::King, Suit::Hearts),
+        let result = Hand::from_cards(&[
+            Card::new(Rank::King, Suit::Hearts),
             Card::new(Rank::King, Suit::Spades),
             Card::new(Rank::King, Suit::Diamonds),
-            Card::new(Rank::King, Suit::Clubs)]);
+            Card::new(Rank::King, Suit::Clubs),
+        ]);
         assert!(result.is_err());
     }
 

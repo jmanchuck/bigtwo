@@ -1,7 +1,7 @@
 // Public API
-pub use cards::{Card, Hand, Rank, Suit};
 #[allow(unused_imports)] // Used by integration tests
 pub use cards::SingleHand;
+pub use cards::{Card, Hand, Rank, Suit};
 pub use core::Game;
 #[allow(unused_imports)] // Used by integration tests
 pub use core::Player;

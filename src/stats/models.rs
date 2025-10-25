@@ -44,9 +44,15 @@ pub struct PlayerStats {
 
 #[derive(Debug, Clone)]
 pub enum CollectedData {
-    CardsRemaining { player_uuid: String, count: u8 },
+    CardsRemaining {
+        player_uuid: String,
+        count: u8,
+    },
     #[allow(dead_code)] // Enum field used via pattern matching
-    WinLoss { player_uuid: String, won: bool },
+    WinLoss {
+        player_uuid: String,
+        won: bool,
+    },
 }
 
 impl CollectedData {
