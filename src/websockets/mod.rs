@@ -1,7 +1,11 @@
 // Public API
 pub use connection_manager::{ConnectionManager, InMemoryConnectionManager};
-pub use handler::{websocket_handler, WebsocketReceiveHandler};
+pub use handler::websocket_handler;
+#[allow(unused_imports)] // Used by integration tests
+pub use handler::WebsocketReceiveHandler;
+#[allow(unused_imports)] // Used by integration tests
 pub use messages::{MessageType, WebSocketMessage};
+#[allow(unused_imports)] // Used by integration tests
 pub use socket::MessageHandler;
 pub use websocket_room_subscriber::WebSocketRoomSubscriber;
 

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::{
     event::{EventBus, RoomEvent, RoomEventError, RoomEventHandler},
@@ -177,7 +177,7 @@ impl RoomEventHandler for BotRoomSubscriber {
 mod tests {
     use super::*;
     use crate::{
-        game::{Card, Game, Rank, Suit},
+        game::{Card, Rank, Suit},
         user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService},
     };
 

@@ -7,7 +7,7 @@ use tracing::{debug, info, instrument};
 
 use super::types::{CreateRoomApiRequest, JoinRoomRequest, RoomCreateRequest, RoomResponse};
 use crate::{
-    bot::{BotManager, BotRoomSubscriber},
+    bot::BotRoomSubscriber,
     event::{RoomEvent, RoomSubscription},
     game::GameEventRoomSubscriber,
     session::SessionClaims,

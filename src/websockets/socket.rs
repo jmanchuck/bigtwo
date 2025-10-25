@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use axum::extract::ws::{Message, WebSocket};
-use futures::{stream::StreamExt, SinkExt};
+use futures::stream::StreamExt;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 

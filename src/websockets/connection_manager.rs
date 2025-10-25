@@ -77,7 +77,6 @@ impl ConnectionManager for InMemoryConnectionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_add_and_send_to_single_player() {

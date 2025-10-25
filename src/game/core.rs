@@ -277,8 +277,9 @@ impl Game {
     }
 }
 
+#[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{Card, Game, GameError, Hand, Player, Rank, Suit};
 
     #[test]
     fn test_new_game() {

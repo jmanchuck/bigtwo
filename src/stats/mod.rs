@@ -9,6 +9,7 @@ pub mod repository;
 pub use errors::StatsError;
 pub use models::*;
 pub use repository::{InMemoryStatsRepository, StatsRepository};
+#[allow(unused_imports)] // Used by integration tests
 pub use service::{StatsRoomSubscriber, StatsService};
 
 use async_trait::async_trait;
