@@ -29,7 +29,7 @@ impl SingleHand {
 
 impl PartialOrd for SingleHand {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.card.cmp(&other.card))
+        Some(self.cmp(other))
     }
 }
 

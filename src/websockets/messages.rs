@@ -50,18 +50,8 @@ pub struct ChatPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MovePayload {
-    pub cards: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeavePayload {
     pub player: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReadyPayload {
-    pub is_ready: bool,
 }
 
 /// Server-to-Client message payloads

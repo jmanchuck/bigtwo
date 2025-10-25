@@ -149,28 +149,6 @@ impl MessageHandler for WebsocketReceiveHandler {
     }
 }
 
-/// Default message handler that just logs incoming messages
-pub struct DefaultMessageHandler;
-
-#[async_trait]
-impl MessageHandler for DefaultMessageHandler {
-    async fn handle_message(&self, username: &str, room_id: &str, message: String) {
-        debug!(
-            username = %username,
-            room_id = %room_id,
-            message = %message,
-            "Received WebSocket message"
-        );
-
-        // TODO: Parse and route messages based on type
-        // For example:
-        // - Chat messages
-        // - Game moves
-        // - Leave room requests
-        // etc.
-    }
-}
-
 /// WebSocket endpoint that handles authentication via Sec-WebSocket-Protocol header
 /// GET /ws/{room_id} with JWT token in Sec-WebSocket-Protocol header
 pub async fn websocket_handler(
