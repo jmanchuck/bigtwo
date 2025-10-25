@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::time::{sleep, Duration};
 use tracing::info;
 
 use crate::{
@@ -147,20 +146,9 @@ impl GameEventRoomSubscriber {
         winner: &str,
         _winning_hand: &[Card],
     ) -> Result<(), RoomEventError> {
-        info!(room_id = %room_id, winner = %winner, "Game won, starting 5-second reset timer");
+        info!(room_id = %room_id, winner = %winner, "Game won");
 
-        // Clone necessary data for the async task
-        let room_id = room_id.to_string();
-        let event_bus = self.event_bus.clone();
-
-        // Spawn async task to handle 5-second delay and reset
-        tokio::spawn(async move {
-            sleep(Duration::from_secs(5)).await;
-
-            info!(room_id = %room_id, "5-second timer elapsed, emitting GameReset");
-
-            event_bus.emit_to_room(&room_id, RoomEvent::GameReset).await;
-        });
+        // No automatic reset - players must manually return to lobby via the UI button
 
         Ok(())
     }
