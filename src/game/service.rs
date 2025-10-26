@@ -131,6 +131,11 @@ impl GameService {
         self.game_repository.get_game(room_id).await
     }
 
+    /// Remove a game from the repository (typically after completion)
+    pub async fn remove_game(&self, room_id: &str) -> Option<Game> {
+        self.game_repository.remove_game(room_id).await
+    }
+
     /// Create a new game with predetermined card distributions
     #[allow(dead_code)] // Public API for testing/debugging scenarios
     pub async fn create_game_with_cards(

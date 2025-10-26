@@ -43,4 +43,9 @@ impl GameRepository {
         let games = self.games.read().await;
         games.get(room_id).cloned()
     }
+
+    pub async fn remove_game(&self, room_id: &str) -> Option<Game> {
+        let mut games = self.games.write().await;
+        games.remove(room_id)
+    }
 }
