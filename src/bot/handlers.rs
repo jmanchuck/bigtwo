@@ -252,6 +252,9 @@ pub async fn remove_bot_from_room(
     // Remove the bot from bot manager
     state.bot_manager.remove_bot(&bot_uuid).await?;
 
+    // Also remove the bot's player mapping to keep mappings clean
+    state.player_mapping.remove_player(&bot_uuid).await;
+
     // Emit PlayerLeft event
     state
         .event_bus

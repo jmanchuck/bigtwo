@@ -13,7 +13,6 @@ pub struct ConnectionEventHandlers {
     room_service: Arc<RoomService>,
     #[allow(dead_code)] // Reserved for future connection management features
     connection_manager: Arc<dyn ConnectionManager>,
-    #[allow(dead_code)] // Reserved for future player mapping features
     player_mapping: Arc<dyn PlayerMappingService>,
     event_bus: EventBus,
     bot_manager: Arc<BotManager>,
@@ -98,6 +97,9 @@ impl ConnectionEventHandlers {
                     "Room deleted after player left, cleaning up bots"
                 );
 
+                // Get all bots in the room before removing them
+                let bots_in_room = self.bot_manager.get_bots_in_room(room_id).await;
+
                 // Clean up all bots in the room
                 if let Err(e) = self.bot_manager.remove_all_bots_in_room(room_id).await {
                     info!(
@@ -105,6 +107,18 @@ impl ConnectionEventHandlers {
                         error = %e,
                         "Failed to clean up bots, but room is already deleted"
                     );
+                }
+
+                // Also remove bot mappings from player mapping service
+                for bot in bots_in_room {
+                    if !self.player_mapping.remove_player(&bot.uuid).await {
+                        // Log but don't fail if bot mapping doesn't exist
+                        info!(
+                            room_id = %room_id,
+                            bot_uuid = %bot.uuid,
+                            "Bot mapping not found or already removed"
+                        );
+                    }
                 }
             }
             Ok(_) => {

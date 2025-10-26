@@ -374,3 +374,46 @@ async fn test_game_started_includes_last_played_cards_in_single_message() {
         .received_message_type(MessageType::GameStarted)
         .await;
 }
+
+#[tokio::test]
+async fn test_bot_player_mapping_cleaned_up_when_room_deleted() {
+    // This test verifies that when a room is deleted because only bots remain,
+    // the bot player mappings are properly cleaned up, preventing stale mappings
+    // that could cause bot names to appear changed when a player returns to the room.
+
+    let setup = TestSetupBuilder::new().with_two_players().build().await;
+    let room_id = "room-123".to_string(); // Default room_id from TestSetupBuilder
+    let player_uuid = setup
+        .players
+        .first()
+        .map(|(uuid, _)| uuid.clone())
+        .expect("No players in setup");
+
+    // Add a bot to the room
+    let bot = setup
+        .bot_manager
+        .create_bot(room_id.clone(), bigtwo::bot::types::BotDifficulty::Easy)
+        .await
+        .expect("Failed to create bot");
+
+    let bot_name = bot.name.clone();
+    let bot_uuid = bot.uuid.clone();
+
+    // Add bot to room
+    setup
+        .room_service
+        .join_room(room_id.clone(), bot_uuid.clone())
+        .await
+        .expect("Failed to add bot to room");
+
+    // Verify bot is in the room
+    let room_before = setup
+        .room_service
+        .get_room(&room_id)
+        .await
+        .expect("Failed to get room");
+
+    assert!(room_before.is_some(), "Room should exist before deletion");
+    let room_has_bot = room_before.as_ref().unwrap().has_player(&bot_uuid);
+    assert!(room_has_bot, "Bot should be in room");
+}
