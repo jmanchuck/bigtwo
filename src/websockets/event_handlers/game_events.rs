@@ -1,16 +1,15 @@
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::{
     event::RoomSubscription,
     event::{EventBus, RoomEvent, RoomEventError},
     game::{Card, Game, GameEventRoomSubscriber, GameService},
     room::service::RoomService,
-    user::mapping_service::PlayerMappingService,
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
-use super::shared::{MessageBroadcaster, PlayerMappingUtils, RoomQueryUtils};
+use super::shared::{MessageBroadcaster, RoomQueryUtils};
 
 fn cards_to_strings(cards: &[Card]) -> Vec<String> {
     cards.iter().map(|card| card.to_string()).collect()
@@ -22,7 +21,6 @@ pub struct GameEventHandlers {
     game_service: Arc<GameService>,
     event_bus: EventBus,
     bot_manager: Arc<crate::bot::BotManager>,
-    player_mapping: Arc<dyn PlayerMappingService>,
 }
 
 impl GameEventHandlers {
@@ -32,7 +30,6 @@ impl GameEventHandlers {
         game_service: Arc<GameService>,
         event_bus: EventBus,
         bot_manager: Arc<crate::bot::BotManager>,
-        player_mapping: Arc<dyn PlayerMappingService>,
     ) -> Self {
         Self {
             room_service,
@@ -40,7 +37,6 @@ impl GameEventHandlers {
             game_service,
             event_bus,
             bot_manager,
-            player_mapping,
         }
     }
 
@@ -297,61 +293,6 @@ impl GameEventHandlers {
             winner = %winner,
             players_notified = game.players().len(),
             "Game won notification sent to all players"
-        );
-
-        Ok(())
-    }
-
-    pub async fn handle_game_reset(&self, room_id: &str) -> Result<(), RoomEventError> {
-        info!(
-            room_id = %room_id,
-            "Handling game reset event"
-        );
-
-        let room = match RoomQueryUtils::get_room_if_exists(&self.room_service, room_id).await? {
-            Some(room) => room,
-            None => {
-                warn!(room_id = %room_id, "Room was deleted, no reset notifications needed");
-                return Ok(());
-            }
-        };
-
-        // Send game reset message
-        let game_reset_message = WebSocketMessage::game_reset();
-        MessageBroadcaster::broadcast_to_players(
-            &self.connection_manager,
-            room.get_player_uuids(),
-            &game_reset_message,
-        )
-        .await?;
-
-        // Broadcast updated PLAYERS_LIST to sync ready states (which were cleared on game start)
-        let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
-            &self.player_mapping,
-            room.get_player_uuids(),
-        )
-        .await;
-
-        let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
-
-        let players_list_message = WebSocketMessage::players_list(
-            room.get_player_uuids().clone(),
-            mapping,
-            bot_uuids,
-            room.get_ready_players().clone(), // This will be empty after clear_ready_states
-            room.host_uuid.clone(),
-        );
-        MessageBroadcaster::broadcast_to_players(
-            &self.connection_manager,
-            room.get_player_uuids(),
-            &players_list_message,
-        )
-        .await?;
-
-        info!(
-            room_id = %room_id,
-            players_notified = room.get_player_uuids().len(),
-            "Game reset and player list notifications sent to all players"
         );
 
         Ok(())

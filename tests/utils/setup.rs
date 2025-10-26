@@ -29,6 +29,7 @@ pub struct TestSetup {
     pub mock_conn_manager: Arc<MockConnectionManager>,
     pub input_handler: WebsocketReceiveHandler,
     pub game_service: Arc<GameService>,
+    pub room_service: Arc<RoomService>,
     pub stats_service: Arc<StatsService>,
     pub stats_repository: Arc<dyn StatsRepository>,
     pub players: Vec<(String, String)>,
@@ -144,6 +145,9 @@ impl TestSetupBuilder {
 
         let input_handler = WebsocketReceiveHandler::new(event_bus.clone());
 
+        // Create room service
+        let room_service = Arc::new(RoomService::new(repo.clone()));
+
         // Create game event subscriber to handle game logic
         let game_subscriber = GameEventRoomSubscriber::new(game_service.clone(), event_bus.clone());
 
@@ -153,8 +157,6 @@ impl TestSetupBuilder {
             event_bus.clone(),
         );
         let _game_subscription_handle = game_subscription.start().await;
-
-        let room_service = Arc::new(RoomService::new(repo.clone()));
 
         // Create websocket subscriber to handle message broadcasting
         let output_subscriber = WebSocketRoomSubscriber::new(
@@ -195,6 +197,7 @@ impl TestSetupBuilder {
             mock_conn_manager,
             input_handler,
             game_service,
+            room_service,
             stats_service,
             stats_repository,
             players: self.players,

@@ -42,8 +42,6 @@ pub enum RoomEvent {
         /// The cards that were played in the winning move
         winning_hand: Vec<Card>,
     },
-    /// Game reset to lobby (after win countdown)
-    GameReset,
     /// A bot was added to the room
     BotAdded { bot_uuid: String, bot_name: String },
     /// A bot was removed from the room
