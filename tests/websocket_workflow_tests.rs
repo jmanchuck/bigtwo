@@ -383,11 +383,6 @@ async fn test_bot_player_mapping_cleaned_up_when_room_deleted() {
 
     let setup = TestSetupBuilder::new().with_two_players().build().await;
     let room_id = "room-123".to_string(); // Default room_id from TestSetupBuilder
-    let player_uuid = setup
-        .players
-        .first()
-        .map(|(uuid, _)| uuid.clone())
-        .expect("No players in setup");
 
     // Add a bot to the room
     let bot = setup
@@ -396,7 +391,6 @@ async fn test_bot_player_mapping_cleaned_up_when_room_deleted() {
         .await
         .expect("Failed to create bot");
 
-    let bot_name = bot.name.clone();
     let bot_uuid = bot.uuid.clone();
 
     // Add bot to room
