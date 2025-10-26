@@ -20,7 +20,6 @@ pub enum MessageType {
     Error,
     GameStarted,
     GameWon,
-    GameReset,
     BotAdded,
     BotRemoved,
     StatsUpdated,
@@ -104,11 +103,6 @@ pub struct TurnChangePayload {
 pub struct GameWonPayload {
     pub winner: String,
     pub winning_hand: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameResetPayload {
-    // Empty payload - just signals that game should reset to lobby
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,15 +236,6 @@ impl WebSocketMessage {
         Self::new(MessageType::GameWon, serde_json::to_value(payload).unwrap())
     }
 
-    /// Create a GAME_RESET message
-    pub fn game_reset() -> Self {
-        let payload = GameResetPayload {};
-        Self::new(
-            MessageType::GameReset,
-            serde_json::to_value(payload).unwrap(),
-        )
-    }
-
     /// Create a BOT_ADDED message
     pub fn bot_added(bot_uuid: String, bot_name: String) -> Self {
         let payload = BotAddedPayload { bot_uuid, bot_name };
@@ -338,10 +323,6 @@ mod tests {
         // game_won
         let gw = WebSocketMessage::game_won("u3".to_string(), vec!["Card1".to_string()]);
         assert!(matches!(gw.message_type, MessageType::GameWon));
-
-        // game_reset
-        let gr = WebSocketMessage::game_reset();
-        assert!(matches!(gr.message_type, MessageType::GameReset));
 
         // bot_added
         let ba = WebSocketMessage::bot_added("bot-123".to_string(), "Bot 1".to_string());

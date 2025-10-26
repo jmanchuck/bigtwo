@@ -41,9 +41,6 @@ impl RoomEventHandler for GameEventRoomSubscriber {
                 self.handle_game_won(room_id, &winner, &winning_hand)
                     .await?;
             }
-            RoomEvent::GameReset => {
-                self.handle_game_reset(room_id).await?;
-            }
             _ => {}
         }
 
@@ -147,25 +144,6 @@ impl GameEventRoomSubscriber {
         _winning_hand: &[Card],
     ) -> Result<(), RoomEventError> {
         info!(room_id = %room_id, winner = %winner, "Game won");
-
-        // No automatic reset - players must manually return to lobby via the UI button
-
-        Ok(())
-    }
-
-    async fn handle_game_reset(&self, room_id: &str) -> Result<(), RoomEventError> {
-        info!(room_id = %room_id, "Resetting game to lobby state");
-
-        // Reset the game state in the repository
-        self.game_service
-            .reset_game_to_lobby(room_id)
-            .await
-            .map_err(|e| RoomEventError::HandlerError(format!("Failed to reset game: {}", e)))?;
-
-        // Emit event to clear ready states (let room subscriber handle it)
-        self.event_bus
-            .emit_to_room(room_id, RoomEvent::ClearReadyStates)
-            .await;
 
         Ok(())
     }

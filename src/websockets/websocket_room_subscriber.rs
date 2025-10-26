@@ -116,7 +116,6 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                     .handle_game_won(room_id, &winner, &winning_hand)
                     .await
             }
-            RoomEvent::GameReset => self.game_handlers.handle_game_reset(room_id).await,
             RoomEvent::BotAdded { bot_uuid, bot_name } => {
                 self.room_handlers
                     .handle_bot_added(room_id, &bot_uuid, &bot_name)
@@ -131,9 +130,6 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
                 self.room_handlers
                     .handle_player_ready_toggled(room_id, &player, is_ready)
                     .await
-            }
-            RoomEvent::ClearReadyStates => {
-                self.room_handlers.handle_clear_ready_states(room_id).await
             }
             RoomEvent::StatsUpdated { room_stats } => {
                 // Broadcast stats update to all connected players
@@ -208,7 +204,6 @@ impl WebSocketRoomSubscriber {
             Arc::clone(&game_service),
             event_bus.clone(),
             Arc::clone(&bot_manager),
-            Arc::clone(&player_mapping),
         );
 
         let connection_handlers = ConnectionEventHandlers::new(

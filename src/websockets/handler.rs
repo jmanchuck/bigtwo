@@ -130,11 +130,6 @@ impl MessageHandler for WebsocketReceiveHandler {
                         }
                     }
                 }
-                MessageType::GameReset => {
-                    self.event_bus
-                        .emit_to_room(room_id, RoomEvent::GameReset)
-                        .await;
-                }
                 _ => {
                     debug!(
                         message_type = ?ws_message.message_type,

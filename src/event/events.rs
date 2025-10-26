@@ -42,16 +42,12 @@ pub enum RoomEvent {
         /// The cards that were played in the winning move
         winning_hand: Vec<Card>,
     },
-    /// Game reset to lobby (after win countdown)
-    GameReset,
     /// A bot was added to the room
     BotAdded { bot_uuid: String, bot_name: String },
     /// A bot was removed from the room
     BotRemoved { bot_uuid: String },
     /// A player toggled their ready state
     PlayerReadyToggled { player: String, is_ready: bool },
-    /// Clear all ready states in the room (typically when returning to lobby)
-    ClearReadyStates,
     /// Room stats were updated (typically after a game completion)
     StatsUpdated {
         room_stats: crate::stats::models::RoomStats,

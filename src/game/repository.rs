@@ -3,7 +3,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::game::core::{Game, GameError};
-use crate::shared::AppError;
 
 pub struct GameRepository {
     /// A mapping from room ID to game
@@ -43,11 +42,5 @@ impl GameRepository {
     pub async fn get_game(&self, room_id: &str) -> Option<Game> {
         let games = self.games.read().await;
         games.get(room_id).cloned()
-    }
-
-    pub async fn delete_game(&self, room_id: &str) -> Result<(), AppError> {
-        let mut games = self.games.write().await;
-        games.remove(room_id);
-        Ok(())
     }
 }

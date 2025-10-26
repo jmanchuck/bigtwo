@@ -361,20 +361,4 @@ impl RoomEventHandlers {
 
         Ok(())
     }
-
-    pub async fn handle_clear_ready_states(&self, room_id: &str) -> Result<(), RoomEventError> {
-        info!(room_id = %room_id, "Handling clear ready states event");
-
-        // Clear all ready states in the room
-        self.room_service
-            .clear_ready_states(room_id)
-            .await
-            .map_err(|e| {
-                RoomEventError::HandlerError(format!("Failed to clear ready states: {}", e))
-            })?;
-
-        info!(room_id = %room_id, "All ready states cleared");
-
-        Ok(())
-    }
 }
