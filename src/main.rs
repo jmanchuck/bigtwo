@@ -33,7 +33,7 @@ use crate::{
     event::EventBus, game::GameService, user::mapping_service::InMemoryPlayerMappingService,
 };
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() {
     // Initialize tracing
     tracing_subscriber::registry()
