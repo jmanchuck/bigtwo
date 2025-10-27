@@ -241,10 +241,7 @@ impl ConnectionEventHandlers {
             )
             .await
             .map_err(|e| {
-                RoomEventError::HandlerError(format!(
-                    "Failed to broadcast connect update: {}",
-                    e
-                ))
+                RoomEventError::HandlerError(format!("Failed to broadcast connect update: {}", e))
             })?;
         }
 
