@@ -14,10 +14,16 @@ pub struct TokenConfig {
 
 impl TokenConfig {
     pub fn new() -> Self {
+        // Allow configuring expiration via env var, default to 365 days (1 year)
+        let expiration_days = std::env::var("SESSION_EXPIRATION_DAYS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(365);
+
         Self {
             secret: std::env::var("JWT_SECRET")
                 .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string()),
-            expiration_days: 7,
+            expiration_days,
         }
     }
 

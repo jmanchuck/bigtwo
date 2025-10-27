@@ -6,7 +6,7 @@ use uuid::Uuid;
 /// Database model for user sessions table
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct SessionModel {
-    pub id: String,       // UUID v4 as string
+    pub id: String,       // UUID v4 as string (also serves as player identifier)
     pub username: String, // Auto-generated pet name
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -15,6 +15,7 @@ pub struct SessionModel {
 
 impl SessionModel {
     /// Creates a new session model with generated ID and timestamps
+    /// The session ID also serves as the player identifier
     pub fn new(username: String, expiration_days: i64) -> Self {
         let now = Utc::now();
         let expires_at = now + chrono::Duration::days(expiration_days);

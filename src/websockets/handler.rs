@@ -279,13 +279,14 @@ async fn handle_websocket_connection(
         let mut mapping: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         for uuid in room.get_player_uuids() {
-            if let Some(name) = app_state.player_mapping.get_playername(uuid).await {
+            // Use session_service which has database fallback for persistent usernames
+            if let Some(name) = app_state.session_service.get_playername_by_uuid(uuid).await {
                 mapping.insert(uuid.clone(), name);
             } else {
                 warn!(
                     room_id = %room_id,
                     uuid = %uuid,
-                    "Player not found in mapping"
+                    "Player not found in mapping or database"
                 );
             }
         }
