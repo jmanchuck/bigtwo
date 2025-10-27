@@ -31,11 +31,12 @@ impl EventBus {
         let room_channels = self.room_channels.read().await;
 
         if let Some(sender) = room_channels.get(room_id) {
-            match sender.send(event) {
+            match sender.send(event.clone()) {
                 Ok(receiver_count) => {
                     info!(
                         room_id = %room_id,
                         receivers = receiver_count,
+                        event = ?event,
                         "Room event emitted"
                     );
                 }

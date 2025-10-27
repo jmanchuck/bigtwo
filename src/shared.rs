@@ -389,6 +389,7 @@ pub mod test_utils {
                     status: "ONLINE".to_string(),
                     player_uuids: vec!["dummy-host-uuid".to_string()],
                     ready_players: vec![],
+                    connected_players: vec!["dummy-host-uuid".to_string()],
                 },
             ))
         }
@@ -416,6 +417,22 @@ pub mod test_utils {
         }
 
         async fn clear_ready_states(&self, _room_id: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn mark_player_disconnected(
+            &self,
+            _room_id: &str,
+            _player_uuid: &str,
+        ) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn mark_player_connected(
+            &self,
+            _room_id: &str,
+            _player_uuid: &str,
+        ) -> Result<(), AppError> {
             Ok(())
         }
     }

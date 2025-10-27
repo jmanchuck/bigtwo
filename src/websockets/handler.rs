@@ -258,7 +258,23 @@ async fn handle_websocket_connection(
         .add_connection(player_uuid.clone(), outbound_sender.clone())
         .await;
 
+    // Mark player as connected in the room (synchronously before sending initial state)
+    // This ensures the initial PLAYERS_LIST we send below has correct connected status
+    if let Err(e) = app_state
+        .room_service
+        .mark_player_connected(&room_id, &player_uuid)
+        .await
+    {
+        warn!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            error = %e,
+            "Failed to mark player as connected"
+        );
+    }
+
     // Send initial room state to the newly connected player
+    // This happens immediately so the connecting player gets state without delay
     if let Ok(Some(room)) = app_state.room_service.get_room(&room_id).await {
         let mut mapping: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -282,6 +298,7 @@ async fn handle_websocket_connection(
             bot_uuids,
             room.get_ready_players().clone(),
             room.host_uuid.clone(),
+            room.get_connected_players().clone(),
         );
         if let Ok(message_json) = serde_json::to_string(&initial_message) {
             let _ = outbound_sender.send(message_json);
@@ -292,6 +309,18 @@ async fn handle_websocket_connection(
             );
         }
     }
+
+    // Emit PlayerConnected event to broadcast updated state to all players (including this one)
+    // This ensures all players in the room see the updated connected status
+    app_state
+        .event_bus
+        .emit_to_room(
+            &room_id,
+            crate::event::RoomEvent::PlayerConnected {
+                player: player_uuid.clone(),
+            },
+        )
+        .await;
 
     // If a game is active, send game hydration data to the reconnecting player
     if let Some(game) = app_state.game_service.get_game(&room_id).await {
@@ -413,10 +442,23 @@ async fn handle_websocket_connection(
         .emit_to_room(
             &room_id,
             crate::event::RoomEvent::PlayerDisconnected {
-                player: player_uuid,
+                player: player_uuid.clone(),
             },
         )
         .await;
+
+    if let Err(e) = app_state
+        .room_service
+        .mark_player_disconnected(&room_id, &player_uuid)
+        .await
+    {
+        warn!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            error = %e,
+            "Failed to mark player as disconnected"
+        );
+    }
 
     info!(
         room_id = %room_id,

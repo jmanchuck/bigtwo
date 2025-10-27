@@ -52,6 +52,17 @@ pub trait RoomRepository {
         player_uuid: &str,
     ) -> Result<LeaveRoomResult, AppError>;
 
+    /// Mark a player as disconnected within a room
+    async fn mark_player_disconnected(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), AppError>;
+
+    /// Mark a player as connected within a room
+    async fn mark_player_connected(&self, room_id: &str, player_uuid: &str)
+        -> Result<(), AppError>;
+
     /// Toggle ready state for a player in a room
     async fn toggle_ready(&self, room_id: &str, player_uuid: &str) -> Result<(), AppError>;
 
@@ -347,6 +358,42 @@ impl RoomRepository for InMemoryRoomRepository {
 
         Ok(())
     }
+
+    #[instrument(skip(self))]
+    async fn mark_player_disconnected(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), AppError> {
+        let mut rooms = self.rooms.lock().unwrap();
+
+        let room = rooms.get_mut(room_id).ok_or_else(|| {
+            warn!(room_id = %room_id, "Room not found when marking disconnected");
+            AppError::NotFound("Room not found".to_string())
+        })?;
+
+        room.mark_disconnected(player_uuid);
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn mark_player_connected(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), AppError> {
+        let mut rooms = self.rooms.lock().unwrap();
+
+        let room = rooms.get_mut(room_id).ok_or_else(|| {
+            warn!(room_id = %room_id, "Room not found when marking connected");
+            AppError::NotFound("Room not found".to_string())
+        })?;
+
+        room.mark_connected(player_uuid);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -361,6 +408,7 @@ mod tests {
             status: "ONLINE".to_string(),
             player_uuids: vec![host_uuid.to_string()], // Test UUID for host
             ready_players: vec![],
+            connected_players: vec![host_uuid.to_string()],
         }
     }
 

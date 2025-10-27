@@ -94,6 +94,7 @@ mod tests {
             status: "ONLINE".into(),
             player_uuids: vec!["a".into(), "b".into()],
             ready_players: vec![],
+            connected_players: vec!["a".into(), "b".into()],
         };
         repo.create_room(&room).await.unwrap();
         let room_service = Arc::new(RoomService::new(repo));

@@ -66,6 +66,8 @@ pub struct PlayersListPayload {
     pub ready_players: Vec<String>,
     /// UUID of the current host
     pub host_uuid: Option<String>,
+    /// UUIDs of players currently connected
+    pub connected_players: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +143,7 @@ impl WebSocketMessage {
         bot_uuids: Vec<String>,
         ready_players: Vec<String>,
         host_uuid: Option<String>,
+        connected_players: Vec<String>,
     ) -> Self {
         let payload = PlayersListPayload {
             players,
@@ -148,6 +151,7 @@ impl WebSocketMessage {
             bot_uuids,
             ready_players,
             host_uuid,
+            connected_players,
         };
         Self::new(
             MessageType::PlayersList,
@@ -279,6 +283,7 @@ mod tests {
             vec![],
             vec![],
             Some("host-uuid".to_string()),
+            vec!["u1".to_string()],
         );
         assert!(matches!(m.message_type, MessageType::PlayersList));
         let s = serde_json::to_string(&m).unwrap();
