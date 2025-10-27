@@ -4,11 +4,12 @@ use sqlx::FromRow;
 /// Database model for rooms table
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct RoomModel {
-    pub id: String,                 // Random pet name generated ID
-    pub host_uuid: Option<String>,  // UUID of room host
-    pub status: String,             // "ONLINE" or "OFFLINE"
-    pub player_uuids: Vec<String>,  // List of player UUIDs in this room (for internal use)
-    pub ready_players: Vec<String>, // List of player UUIDs who are ready to start
+    pub id: String,                     // Random pet name generated ID
+    pub host_uuid: Option<String>,      // UUID of room host
+    pub status: String,                 // "ONLINE" or "OFFLINE"
+    pub player_uuids: Vec<String>,      // List of player UUIDs in this room (for internal use)
+    pub ready_players: Vec<String>,     // List of player UUIDs who are ready to start
+    pub connected_players: Vec<String>, // Players currently connected via WebSocket
 }
 
 impl RoomModel {
@@ -22,6 +23,7 @@ impl RoomModel {
             status: "ONLINE".to_string(),
             player_uuids: vec![],  // Host UUID will be added when they join
             ready_players: vec![], // No players ready initially
+            connected_players: vec![],
         }
     }
 
@@ -48,8 +50,9 @@ impl RoomModel {
     /// Add a player to the room (both username and UUID)
     pub fn add_player(&mut self, player_uuid: String) {
         if !self.has_player(&player_uuid) {
-            self.player_uuids.push(player_uuid);
+            self.player_uuids.push(player_uuid.clone());
         }
+        self.mark_connected(&player_uuid);
     }
 
     /// Remove a player from the room (both username and UUID)
@@ -57,6 +60,7 @@ impl RoomModel {
         self.player_uuids.retain(|p| p != player_uuid);
         // Also remove from ready list when player leaves
         self.ready_players.retain(|p| p != player_uuid);
+        self.connected_players.retain(|p| p != player_uuid);
     }
 
     /// Mark a player as ready
@@ -102,5 +106,24 @@ impl RoomModel {
     /// Clear all ready states (called when game starts)
     pub fn clear_ready_states(&mut self) {
         self.ready_players.clear();
+    }
+
+    /// Mark a player as connected
+    pub fn mark_connected(&mut self, player_uuid: &str) {
+        if self.has_player(player_uuid)
+            && !self.connected_players.contains(&player_uuid.to_string())
+        {
+            self.connected_players.push(player_uuid.to_string());
+        }
+    }
+
+    /// Mark a player as disconnected
+    pub fn mark_disconnected(&mut self, player_uuid: &str) {
+        self.connected_players.retain(|p| p != player_uuid);
+    }
+
+    /// Get all currently connected players
+    pub fn get_connected_players(&self) -> &Vec<String> {
+        &self.connected_players
     }
 }

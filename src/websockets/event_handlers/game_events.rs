@@ -2,9 +2,8 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::{
-    event::RoomSubscription,
     event::{EventBus, RoomEvent, RoomEventError},
-    game::{Card, Game, GameEventRoomSubscriber, GameService},
+    game::{Card, Game, GameService},
     room::service::RoomService,
     websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
@@ -153,19 +152,6 @@ impl GameEventHandlers {
             // TODO: Send error message back to host
             return Ok(());
         }
-
-        let game_event_room_subscriber = Arc::new(GameEventRoomSubscriber::new(
-            Arc::clone(&self.game_service),
-            self.event_bus.clone(),
-        ));
-
-        let game_event_room_subscription = RoomSubscription::new(
-            room_id.to_string(),
-            game_event_room_subscriber,
-            self.event_bus.clone(),
-        );
-
-        let _subscription_handle = game_event_room_subscription.start().await;
 
         self.event_bus
             .emit_to_room(

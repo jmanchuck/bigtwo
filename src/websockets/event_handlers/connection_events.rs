@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use tracing::info;
 
+use crate::websockets::event_handlers::shared::{MessageBroadcaster, PlayerMappingUtils};
 use crate::{
     bot::BotManager,
     event::{EventBus, RoomEvent, RoomEventError},
     room::{repository::LeaveRoomResult, service::RoomService},
     user::PlayerMappingService,
-    websockets::connection_manager::ConnectionManager,
+    websockets::{connection_manager::ConnectionManager, messages::WebSocketMessage},
 };
 
 pub struct ConnectionEventHandlers {
@@ -134,6 +135,117 @@ impl ConnectionEventHandlers {
                     e
                 )));
             }
+        }
+
+        Ok(())
+    }
+
+    pub async fn handle_disconnect(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Processing disconnect event"
+        );
+
+        if let Some(room) = self
+            .room_service
+            .get_room(room_id)
+            .await
+            .map_err(|e| RoomEventError::HandlerError(format!("Failed to fetch room: {}", e)))?
+        {
+            let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
+                &self.player_mapping,
+                room.get_player_uuids(),
+            )
+            .await;
+
+            let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+            let ws_message = WebSocketMessage::players_list(
+                room.get_player_uuids().clone(),
+                mapping,
+                bot_uuids,
+                room.get_ready_players().clone(),
+                room.host_uuid.clone(),
+                room.get_connected_players().clone(),
+            );
+
+            MessageBroadcaster::broadcast_to_players(
+                &self.connection_manager,
+                room.get_player_uuids(),
+                &ws_message,
+            )
+            .await
+            .map_err(|e| {
+                RoomEventError::HandlerError(format!(
+                    "Failed to broadcast disconnect update: {}",
+                    e
+                ))
+            })?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn handle_connect(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), RoomEventError> {
+        info!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Processing connect event"
+        );
+
+        // Mark player as connected in the room
+        self.room_service
+            .mark_player_connected(room_id, player_uuid)
+            .await
+            .map_err(|e| {
+                RoomEventError::HandlerError(format!("Failed to mark player as connected: {}", e))
+            })?;
+
+        // Get updated room state
+        if let Some(room) = self
+            .room_service
+            .get_room(room_id)
+            .await
+            .map_err(|e| RoomEventError::HandlerError(format!("Failed to fetch room: {}", e)))?
+        {
+            let mapping = PlayerMappingUtils::build_uuid_to_name_mapping(
+                &self.player_mapping,
+                room.get_player_uuids(),
+            )
+            .await;
+
+            let bot_uuids = self.bot_manager.get_bot_uuids_in_room(room_id).await;
+
+            let ws_message = WebSocketMessage::players_list(
+                room.get_player_uuids().clone(),
+                mapping,
+                bot_uuids,
+                room.get_ready_players().clone(),
+                room.host_uuid.clone(),
+                room.get_connected_players().clone(),
+            );
+
+            MessageBroadcaster::broadcast_to_players(
+                &self.connection_manager,
+                room.get_player_uuids(),
+                &ws_message,
+            )
+            .await
+            .map_err(|e| {
+                RoomEventError::HandlerError(format!(
+                    "Failed to broadcast connect update: {}",
+                    e
+                ))
+            })?;
         }
 
         Ok(())

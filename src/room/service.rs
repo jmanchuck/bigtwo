@@ -204,6 +204,40 @@ impl RoomService {
 
         Ok(())
     }
+
+    /// Mark a player as disconnected within the room
+    #[instrument(skip(self))]
+    pub async fn mark_player_disconnected(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), AppError> {
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Marking player as disconnected"
+        );
+        self.repository
+            .mark_player_disconnected(room_id, player_uuid)
+            .await
+    }
+
+    /// Mark a player as connected within the room
+    #[instrument(skip(self))]
+    pub async fn mark_player_connected(
+        &self,
+        room_id: &str,
+        player_uuid: &str,
+    ) -> Result<(), AppError> {
+        debug!(
+            room_id = %room_id,
+            player_uuid = %player_uuid,
+            "Marking player as connected"
+        );
+        self.repository
+            .mark_player_connected(room_id, player_uuid)
+            .await
+    }
 }
 
 #[cfg(test)]

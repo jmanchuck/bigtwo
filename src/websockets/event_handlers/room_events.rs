@@ -57,6 +57,7 @@ impl RoomEventHandlers {
             bot_uuids,
             room.get_ready_players().clone(),
             room.host_uuid.clone(),
+            room.get_connected_players().clone(),
         );
 
         MessageBroadcaster::broadcast_to_players(
@@ -120,6 +121,7 @@ impl RoomEventHandlers {
             bot_uuids,
             room.get_ready_players().clone(),
             room.host_uuid.clone(),
+            room.get_connected_players().clone(),
         );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
@@ -225,6 +227,7 @@ impl RoomEventHandlers {
             bot_uuids,
             room.get_ready_players().clone(),
             room.host_uuid.clone(),
+            room.get_connected_players().clone(),
         );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
@@ -286,6 +289,7 @@ impl RoomEventHandlers {
             bot_uuids,
             room.get_ready_players().clone(),
             room.host_uuid.clone(),
+            room.get_connected_players().clone(),
         );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
@@ -343,6 +347,7 @@ impl RoomEventHandlers {
             bot_uuids,
             room.get_ready_players().clone(),
             room.host_uuid.clone(),
+            room.get_connected_players().clone(),
         );
         MessageBroadcaster::broadcast_to_players(
             &self.connection_manager,
