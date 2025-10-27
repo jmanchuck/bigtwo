@@ -13,6 +13,9 @@ pub trait SocketWrapper: Send {
     /// Receive the next message from the client (None if connection closed)
     async fn receive_message(&mut self) -> Result<Option<String>, SocketError>;
 
+    /// Send a ping frame to the client (for keepalive)
+    async fn send_ping(&mut self) -> Result<(), SocketError>;
+
     /// Close the connection
     async fn close(&mut self) -> Result<(), SocketError>;
 }
@@ -68,6 +71,12 @@ impl SocketWrapper for WebSocket {
         }
     }
 
+    async fn send_ping(&mut self) -> Result<(), SocketError> {
+        self.send(Message::Ping(vec![]))
+            .await
+            .map_err(|e| SocketError::SendFailed(e.to_string()))
+    }
+
     async fn close(&mut self) -> Result<(), SocketError> {
         self.send(Message::Close(None))
             .await
@@ -104,7 +113,14 @@ impl Connection {
     }
 
     /// Run the connection - handles both sending and receiving until disconnect
+    /// Implements keepalive by sending ping frames every 30 seconds (industry standard)
     pub async fn run(mut self) -> Result<(), SocketError> {
+        // Send ping every 30 seconds to keep connection alive (industry standard interval)
+        // This prevents intermediate proxies/NAT routers from timing out idle connections
+        let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        // Skip the first tick (which fires immediately)
+        ping_interval.tick().await;
+
         loop {
             tokio::select! {
                 // Handle outbound messages (from our app to client)
@@ -130,10 +146,25 @@ impl Connection {
                         Err(e) => return Err(e),
                     }
                 }
+
+                // Send periodic ping to keep connection alive
+                _ = ping_interval.tick() => {
+                    // Send ping frame - client will automatically respond with pong
+                    // If this fails, the connection is likely dead
+                    if let Err(e) = self.socket.send_ping().await {
+                        tracing::debug!(
+                            room_id = %self.room_id,
+                            username = %self.username,
+                            error = ?e,
+                            "Failed to send keepalive ping, connection dead"
+                        );
+                        return Err(e);
+                    }
+                }
             }
         }
 
-        // Clean disconnect
+        // Clean disconnect with proper close frame (industry best practice)
         let _ = self.socket.close().await;
         Ok(())
     }
@@ -158,6 +189,12 @@ mod tests {
 
         async fn receive_message(&mut self) -> Result<Option<String>, SocketError> {
             Ok(self.inbound.recv().await)
+        }
+
+        async fn send_ping(&mut self) -> Result<(), SocketError> {
+            // For testing, just track that ping was sent
+            self.sent.lock().unwrap().push("__PING__".to_string());
+            Ok(())
         }
 
         async fn close(&mut self) -> Result<(), SocketError> {
