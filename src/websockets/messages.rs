@@ -271,10 +271,7 @@ impl WebSocketMessage {
 
     /// Create a HEARTBEAT_ACK message
     pub fn heartbeat_ack() -> Self {
-        Self::new(
-            MessageType::HeartbeatAck,
-            serde_json::json!({}),
-        )
+        Self::new(MessageType::HeartbeatAck, serde_json::json!({}))
     }
 }
 
