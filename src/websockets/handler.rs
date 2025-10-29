@@ -130,6 +130,23 @@ impl MessageHandler for WebsocketReceiveHandler {
                         }
                     }
                 }
+                MessageType::Heartbeat => {
+                    // Client sent heartbeat to check connection health
+                    // Emit event to send HEARTBEAT_ACK back to this specific player
+                    debug!(
+                        username = %username,
+                        room_id = %room_id,
+                        "Received heartbeat from client"
+                    );
+                    self.event_bus
+                        .emit_to_room(
+                            room_id,
+                            RoomEvent::HeartbeatReceived {
+                                player: username.to_string(),
+                            },
+                        )
+                        .await;
+                }
                 _ => {
                     debug!(
                         message_type = ?ws_message.message_type,

@@ -11,6 +11,7 @@ pub enum MessageType {
     Leave,
     StartGame,
     Ready,
+    Heartbeat, // Client heartbeat to check connection health
 
     // Server -> Client
     PlayersList,
@@ -23,6 +24,7 @@ pub enum MessageType {
     BotAdded,
     BotRemoved,
     StatsUpdated,
+    HeartbeatAck, // Server acknowledgment of heartbeat
 }
 
 /// Metadata for WebSocket messages
@@ -264,6 +266,14 @@ impl WebSocketMessage {
         Self::new(
             MessageType::StatsUpdated,
             serde_json::to_value(payload).unwrap(),
+        )
+    }
+
+    /// Create a HEARTBEAT_ACK message
+    pub fn heartbeat_ack() -> Self {
+        Self::new(
+            MessageType::HeartbeatAck,
+            serde_json::json!({}),
         )
     }
 }
