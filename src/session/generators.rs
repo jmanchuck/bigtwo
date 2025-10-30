@@ -1,38 +1,9 @@
 use async_trait::async_trait;
-use uuid::Uuid;
-
-/// Trait for generating unique identifiers
-#[async_trait]
-pub trait UuidGenerator: Send + Sync {
-    async fn generate(&self) -> String;
-}
 
 /// Trait for generating usernames
 #[async_trait]
 pub trait UsernameGenerator: Send + Sync {
     async fn generate(&self) -> String;
-}
-
-/// Default UUID generator using UUID v4
-pub struct DefaultUuidGenerator;
-
-impl DefaultUuidGenerator {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for DefaultUuidGenerator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl UuidGenerator for DefaultUuidGenerator {
-    async fn generate(&self) -> String {
-        Uuid::new_v4().to_string()
-    }
 }
 
 /// Pet name-based username generator
@@ -60,20 +31,6 @@ impl UsernameGenerator for PetNameUsernameGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_default_uuid_generator() {
-        let generator = DefaultUuidGenerator::new();
-        let uuid1 = generator.generate().await;
-        let uuid2 = generator.generate().await;
-
-        // Should generate valid UUIDs
-        assert!(Uuid::parse_str(&uuid1).is_ok());
-        assert!(Uuid::parse_str(&uuid2).is_ok());
-
-        // Should be unique
-        assert_ne!(uuid1, uuid2);
-    }
 
     #[tokio::test]
     async fn test_petname_username_generator() {

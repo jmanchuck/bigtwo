@@ -52,4 +52,6 @@ pub enum RoomEvent {
     StatsUpdated {
         room_stats: crate::stats::models::RoomStats,
     },
+    /// Heartbeat received from a player (for connection health check)
+    HeartbeatReceived { player: String },
 }

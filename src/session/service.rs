@@ -5,7 +5,7 @@ use tracing::{info, instrument, warn};
 
 use super::{
     creator::{SessionCreationConfig, SessionCreator},
-    generators::{DefaultUuidGenerator, PetNameUsernameGenerator},
+    generators::PetNameUsernameGenerator,
     repository::SessionRepository,
     token::TokenConfig,
     types::{SessionClaims, SessionResponse},
@@ -19,6 +19,7 @@ pub struct SessionService {
     repository: Arc<dyn SessionRepository + Send + Sync>,
     #[allow(dead_code)] // Reserved for future player mapping features
     player_mapping: Arc<dyn PlayerMappingService>,
+    #[allow(dead_code)] // Legacy in-memory mapping - now stored in database
     session_to_player_uuid: Arc<RwLock<HashMap<String, String>>>, // session_id -> player_uuid
 }
 
@@ -32,7 +33,6 @@ impl SessionService {
 
         // Create session creator with default generators
         let session_creator = SessionCreator::new(
-            Arc::new(DefaultUuidGenerator::new()),
             Arc::new(PetNameUsernameGenerator::new()),
             repository.clone(),
             player_mapping.clone(),
@@ -178,27 +178,50 @@ impl SessionService {
     }
 
     /// Gets player UUID by session ID
+    /// Since session.id IS the player identifier, this just validates the session exists
     #[instrument(skip(self))]
     pub async fn get_player_uuid_by_session(
         &self,
         session_id: &str,
     ) -> Result<Option<String>, AppError> {
-        // Check if session exists in database first
+        // Check if session exists in database
         let session = self.repository.get_session(session_id).await?;
-        if session.is_none() {
-            return Ok(None);
-        }
 
-        // Get the player UUID from our session mapping
-        let session_uuid_map = self.session_to_player_uuid.read().await;
-        let uuid = session_uuid_map.get(session_id).cloned();
-        Ok(uuid)
+        match session {
+            Some(_) => {
+                // Session exists, return the session_id as the player identifier
+                Ok(Some(session_id.to_string()))
+            }
+            None => Ok(None),
+        }
     }
 
-    /// Gets playername by player UUID
+    /// Gets playername by player identifier (session ID)
+    /// First checks in-memory cache, then falls back to database
     #[instrument(skip(self))]
-    pub async fn get_playername_by_uuid(&self, player_uuid: &str) -> Option<String> {
-        self.player_mapping.get_playername(player_uuid).await
+    pub async fn get_playername_by_uuid(&self, player_id: &str) -> Option<String> {
+        // First check in-memory mapping (fast path for active sessions)
+        if let Some(username) = self.player_mapping.get_playername(player_id).await {
+            return Some(username);
+        }
+
+        // Fall back to database lookup (for sessions after restart)
+        // Since player_id IS the session_id, we can look it up directly
+        match self.repository.get_session(player_id).await {
+            Ok(Some(session)) => {
+                // Re-populate in-memory mapping for future lookups
+                let _ = self
+                    .player_mapping
+                    .register_player(player_id.to_string(), session.username.clone())
+                    .await;
+                Some(session.username)
+            }
+            Ok(None) => None,
+            Err(e) => {
+                warn!(error = ?e, player_id = %player_id, "Failed to get playername from database");
+                None
+            }
+        }
     }
 }
 

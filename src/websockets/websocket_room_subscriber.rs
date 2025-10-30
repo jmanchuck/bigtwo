@@ -152,6 +152,25 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
 
                 Ok(())
             }
+            RoomEvent::HeartbeatReceived { player } => {
+                // Client sent heartbeat, respond with HEARTBEAT_ACK to confirm connection is alive
+                let heartbeat_ack = super::messages::WebSocketMessage::heartbeat_ack();
+
+                if let Ok(message_json) = serde_json::to_string(&heartbeat_ack) {
+                    self.room_handlers
+                        .connection_manager
+                        .send_to_player(&player, &message_json)
+                        .await;
+
+                    info!(
+                        room_id = %room_id,
+                        player = %player,
+                        "Sent HEARTBEAT_ACK to player"
+                    );
+                }
+
+                Ok(())
+            }
             _ => {
                 info!(
                     room_id = %room_id,

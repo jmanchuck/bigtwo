@@ -4,11 +4,8 @@ use tokio::sync::RwLock;
 use tracing::{info, instrument};
 
 use super::{
-    generators::{UsernameGenerator, UuidGenerator},
-    models::SessionModel,
-    repository::SessionRepository,
-    token::TokenConfig,
-    types::SessionResponse,
+    generators::UsernameGenerator, models::SessionModel, repository::SessionRepository,
+    token::TokenConfig, types::SessionResponse,
 };
 use crate::{shared::AppError, user::PlayerMappingService};
 
@@ -20,16 +17,19 @@ pub struct SessionCreationConfig {
 
 impl Default for SessionCreationConfig {
     fn default() -> Self {
-        Self {
-            expiration_days: 7, // Default to 7 days
-        }
+        // Allow configuring expiration via env var, default to 365 days (1 year)
+        let expiration_days = std::env::var("SESSION_EXPIRATION_DAYS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(365);
+
+        Self { expiration_days }
     }
 }
 
 /// Orchestrates the complex session creation process
 /// Separates concerns and provides transaction-like semantics
 pub struct SessionCreator {
-    uuid_generator: Arc<dyn UuidGenerator>,
     username_generator: Arc<dyn UsernameGenerator>,
     session_repository: Arc<dyn SessionRepository + Send + Sync>,
     player_mapping: Arc<dyn PlayerMappingService>,
@@ -48,7 +48,6 @@ pub struct SessionCreationResult {
 
 impl SessionCreator {
     pub fn new(
-        uuid_generator: Arc<dyn UuidGenerator>,
         username_generator: Arc<dyn UsernameGenerator>,
         session_repository: Arc<dyn SessionRepository + Send + Sync>,
         player_mapping: Arc<dyn PlayerMappingService>,
@@ -57,7 +56,6 @@ impl SessionCreator {
         config: SessionCreationConfig,
     ) -> Self {
         Self {
-            uuid_generator,
             username_generator,
             session_repository,
             player_mapping,
@@ -74,38 +72,33 @@ impl SessionCreator {
         let username = self.generate_username().await?;
         info!(username = %username, "Generated username");
 
-        // Step 2: Generate player UUID
-        let player_uuid = self.generate_player_uuid().await?;
-        info!(player_uuid = %player_uuid, "Generated player UUID");
-
-        // Step 3: Create session model
+        // Step 2: Create session model (session.id will serve as player identifier)
         let session_model = self.create_session_model(username.clone()).await?;
         info!(session_id = %session_model.id, "Created session model");
 
-        // Step 4: Store session in database
+        // Step 3: Store session in database
         self.store_session(&session_model).await?;
         info!(session_id = %session_model.id, "Stored session in database");
 
-        // Step 5: Register player mapping
+        // Step 4: Register player mapping (using session.id as player identifier)
         let mapping_cleanup_needed = self
-            .register_player_mapping(&player_uuid, &username)
+            .register_player_mapping(&session_model.id, &username)
             .await?;
         info!(
-            player_uuid = %player_uuid,
+            player_id = %session_model.id,
             username = %username,
             "Registered player mapping"
         );
 
-        // Step 6: Store session-to-player UUID mapping
-        self.store_session_mapping(&session_model.id, &player_uuid)
+        // Step 5: Store session-to-player mapping (now they're the same!)
+        self.store_session_mapping(&session_model.id, &session_model.id)
             .await?;
         info!(
             session_id = %session_model.id,
-            player_uuid = %player_uuid,
             "Stored session-to-player mapping"
         );
 
-        // Step 7: Create JWT token
+        // Step 6: Create JWT token
         let token = self.create_jwt_token(&session_model.id, &username).await?;
         info!(username = %username, "Created JWT token");
 
@@ -113,7 +106,6 @@ impl SessionCreator {
             session_response: SessionResponse {
                 session_id: token,
                 username,
-                player_uuid,
             },
             cleanup_needed: mapping_cleanup_needed,
         })
@@ -122,11 +114,6 @@ impl SessionCreator {
     /// Generate username using configured generator
     async fn generate_username(&self) -> Result<String, AppError> {
         Ok(self.username_generator.generate().await)
-    }
-
-    /// Generate player UUID using configured generator
-    async fn generate_player_uuid(&self) -> Result<String, AppError> {
-        Ok(self.uuid_generator.generate().await)
     }
 
     /// Create session model with proper expiration
@@ -201,13 +188,12 @@ impl SessionCreator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::generators::{DefaultUuidGenerator, PetNameUsernameGenerator};
+    use crate::session::generators::PetNameUsernameGenerator;
     use crate::session::repository::InMemorySessionRepository;
     use crate::user::mapping_service::InMemoryPlayerMappingService;
     use std::collections::HashMap;
 
     fn create_test_session_creator() -> SessionCreator {
-        let uuid_generator = Arc::new(DefaultUuidGenerator::new());
         let username_generator = Arc::new(PetNameUsernameGenerator::new());
         let session_repository = Arc::new(InMemorySessionRepository::new());
         let player_mapping = Arc::new(InMemoryPlayerMappingService::new());
@@ -216,7 +202,6 @@ mod tests {
         let config = SessionCreationConfig::default();
 
         SessionCreator::new(
-            uuid_generator,
             username_generator,
             session_repository,
             player_mapping,
@@ -239,7 +224,6 @@ mod tests {
         assert!(session_result.session_response.session_id.contains('.')); // JWT has dots
         assert!(!session_result.session_response.username.is_empty());
         assert!(session_result.session_response.username.contains('-')); // Pet names have dashes
-        assert!(!session_result.session_response.player_uuid.is_empty());
 
         // Should be able to validate the created session
         let claims = creator
@@ -256,14 +240,10 @@ mod tests {
         let result1 = creator.create_session().await.unwrap();
         let result2 = creator.create_session().await.unwrap();
 
-        // Sessions should be unique
+        // Sessions should be unique (session_id also serves as player identifier)
         assert_ne!(
             result1.session_response.session_id,
             result2.session_response.session_id
-        );
-        assert_ne!(
-            result1.session_response.player_uuid,
-            result2.session_response.player_uuid
         );
         // Usernames may or may not be unique (petnames can repeat)
     }

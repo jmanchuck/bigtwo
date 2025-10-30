@@ -113,11 +113,12 @@ impl Connection {
     }
 
     /// Run the connection - handles both sending and receiving until disconnect
-    /// Implements keepalive by sending ping frames every 30 seconds (industry standard)
+    /// Implements keepalive by sending ping frames every 15 seconds (modern real-time apps standard)
     pub async fn run(mut self) -> Result<(), SocketError> {
-        // Send ping every 30 seconds to keep connection alive (industry standard interval)
+        // Send ping every 15 seconds to keep connection alive (modern real-time apps standard)
         // This prevents intermediate proxies/NAT routers from timing out idle connections
-        let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        // and catches dead connections faster (Discord, Slack, multiplayer games use 10-15s)
+        let mut ping_interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
         // Skip the first tick (which fires immediately)
         ping_interval.tick().await;
 
