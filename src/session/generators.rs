@@ -33,20 +33,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_default_uuid_generator() {
-        let generator = DefaultUuidGenerator::new();
-        let uuid1 = generator.generate().await;
-        let uuid2 = generator.generate().await;
-
-        // Should generate valid UUIDs
-        assert!(Uuid::parse_str(&uuid1).is_ok());
-        assert!(Uuid::parse_str(&uuid2).is_ok());
-
-        // Should be unique
-        assert_ne!(uuid1, uuid2);
-    }
-
-    #[tokio::test]
     async fn test_petname_username_generator() {
         let generator = PetNameUsernameGenerator::new();
         let username1 = generator.generate().await;

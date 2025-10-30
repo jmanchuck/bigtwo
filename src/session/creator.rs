@@ -188,13 +188,12 @@ impl SessionCreator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::generators::{DefaultUuidGenerator, PetNameUsernameGenerator};
+    use crate::session::generators::PetNameUsernameGenerator;
     use crate::session::repository::InMemorySessionRepository;
     use crate::user::mapping_service::InMemoryPlayerMappingService;
     use std::collections::HashMap;
 
     fn create_test_session_creator() -> SessionCreator {
-        let uuid_generator = Arc::new(DefaultUuidGenerator::new());
         let username_generator = Arc::new(PetNameUsernameGenerator::new());
         let session_repository = Arc::new(InMemorySessionRepository::new());
         let player_mapping = Arc::new(InMemoryPlayerMappingService::new());

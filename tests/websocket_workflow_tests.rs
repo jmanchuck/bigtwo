@@ -1,7 +1,7 @@
 use bigtwo::{
     event::RoomEvent,
     game::{Card, Rank, Suit},
-    websockets::MessageType,
+    websockets::{MessageType, WebSocketMessage},
 };
 
 mod utils;
@@ -410,4 +410,118 @@ async fn test_bot_player_mapping_cleaned_up_when_room_deleted() {
     assert!(room_before.is_some(), "Room should exist before deletion");
     let room_has_bot = room_before.as_ref().unwrap().has_player(&bot_uuid);
     assert!(room_has_bot, "Bot should be in room");
+}
+
+#[tokio::test]
+async fn test_heartbeat_returns_ack_to_sender_only() {
+    let setup = TestSetupBuilder::new().with_four_players().build().await;
+    let alice = "550e8400-e29b-41d4-a716-446655440000";
+
+    setup
+        .send_message(
+            alice,
+            WebSocketMessage::new(MessageType::Heartbeat, serde_json::json!({})),
+        )
+        .await;
+
+    // Alice receives ACK
+    MessageAssertion::for_players(&setup, vec![alice])
+        .received_message_type(MessageType::HeartbeatAck)
+        .await;
+
+    // Others receive nothing
+    MessageAssertion::for_players(
+        &setup,
+        vec![
+            "550e8400-e29b-41d4-a716-446655440001",
+            "550e8400-e29b-41d4-a716-446655440002",
+            "550e8400-e29b-41d4-a716-446655440003",
+        ],
+    )
+    .received_no_messages()
+    .await;
+}
+
+#[tokio::test]
+async fn test_multiple_players_can_send_heartbeats_independently() {
+    let setup = TestSetupBuilder::new().with_four_players().build().await;
+
+    // All players send heartbeats
+    for (uuid, _) in &setup.players {
+        setup
+            .send_message(
+                uuid,
+                WebSocketMessage::new(MessageType::Heartbeat, serde_json::json!({})),
+            )
+            .await;
+    }
+
+    // Each player should have received exactly one ACK
+    for (uuid, _) in &setup.players {
+        MessageAssertion::for_players(&setup, vec![uuid.as_str()])
+            .received_message_type(MessageType::HeartbeatAck)
+            .await;
+    }
+}
+
+#[tokio::test]
+async fn test_heartbeat_during_active_game_does_not_interfere() {
+    let setup = TestSetupBuilder::new().with_four_players().build().await;
+    let first_player = GameBuilder::new()
+        .with_simple_four_player_game()
+        .build_with_setup(&setup)
+        .await;
+
+    // First player makes a valid move
+    setup.send_move(&first_player, vec!["3D"]).await;
+
+    MessageAssertion::for_all_players(&setup)
+        .received_message_type(MessageType::MovePlayed)
+        .await;
+
+    MessageAssertion::for_all_players(&setup)
+        .received_message_type(MessageType::TurnChange)
+        .await;
+
+    setup.clear_messages().await;
+
+    // Player sends heartbeat during game
+    setup
+        .send_message(
+            &first_player,
+            WebSocketMessage::new(MessageType::Heartbeat, serde_json::json!({})),
+        )
+        .await;
+
+    // Only that player receives heartbeat ACK
+    MessageAssertion::for_players(&setup, vec![first_player.as_str()])
+        .received_message_type(MessageType::HeartbeatAck)
+        .await;
+
+    // Verify game state is unchanged
+    let game = setup.game_service.get_game("room-123").await.unwrap();
+    assert_ne!(
+        game.current_player_turn(),
+        first_player,
+        "Turn should have moved to next player"
+    );
+}
+
+#[tokio::test]
+async fn test_heartbeat_before_game_starts() {
+    let setup = TestSetupBuilder::new().with_two_players().build().await;
+    let alice = "550e8400-e29b-41d4-a716-446655440000";
+
+    // Send heartbeat before game has started
+    setup
+        .send_message(
+            alice,
+            WebSocketMessage::new(MessageType::Heartbeat, serde_json::json!({})),
+        )
+        .await;
+
+    // Should still receive ACK even without active game
+    MessageAssertion::for_players(&setup, vec![alice])
+        .received_message_type(MessageType::HeartbeatAck)
+        .await;
 }
