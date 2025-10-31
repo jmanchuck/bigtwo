@@ -110,23 +110,33 @@ async fn main() {
 
     // Configure CORS for development and production
     // Allow origins from environment variable for production, fallback to localhost for dev
+    // Set ALLOWED_ORIGINS="*" to allow all origins (dev/staging only!)
     let allowed_origins = std::env::var("ALLOWED_ORIGINS")
         .unwrap_or_else(|_| "https://localhost:5173,http://localhost:5173".to_string());
 
-    let origins: Vec<HeaderValue> = allowed_origins
-        .split(',')
-        .filter_map(|origin| origin.trim().parse::<HeaderValue>().ok())
-        .collect();
-
-    info!("Allowed CORS origins: {:?}", origins);
-
-    let cors = CorsLayer::new()
-        .allow_origin(origins)
-        .allow_methods([Method::GET, Method::POST, Method::DELETE])
-        .allow_headers([
-            axum::http::header::CONTENT_TYPE,
-            axum::http::header::AUTHORIZATION,
-        ]);
+    let cors = if allowed_origins.trim() == "*" {
+        info!("⚠️  CORS: Allowing ALL origins (dev mode - insecure for production!)");
+        CorsLayer::new()
+            .allow_origin(tower_http::cors::Any)
+            .allow_methods([Method::GET, Method::POST, Method::DELETE])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::AUTHORIZATION,
+            ])
+    } else {
+        let origins: Vec<HeaderValue> = allowed_origins
+            .split(',')
+            .filter_map(|origin| origin.trim().parse::<HeaderValue>().ok())
+            .collect();
+        info!("Allowed CORS origins: {:?}", origins);
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods([Method::GET, Method::POST, Method::DELETE])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::AUTHORIZATION,
+            ])
+    };
 
     // build our application with a single route
     let app = Router::new()
