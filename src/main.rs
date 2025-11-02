@@ -112,7 +112,7 @@ async fn main() {
     // Allow origins from environment variable for production, fallback to localhost for dev
     // Set ALLOWED_ORIGINS="*" to allow all origins (dev/staging only!)
     let allowed_origins = std::env::var("ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "https://localhost:5173,http://localhost:5173".to_string());
+        .unwrap_or_else(|_| "https://localhost:5175,http://localhost:5175".to_string());
 
     let cors = if allowed_origins.trim() == "*" {
         info!("⚠️  CORS: Allowing ALL origins (dev mode - insecure for production!)");

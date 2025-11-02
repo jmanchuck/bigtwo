@@ -59,6 +59,9 @@ impl GameEventHandlers {
             .map(|p| (p.uuid.clone(), p.cards.len()))
             .collect();
 
+        // At game start, no one has played yet, so last_plays_by_player is empty
+        let last_plays_by_player = std::collections::HashMap::new();
+
         for player in game.players() {
             let player_message = WebSocketMessage::game_started(
                 current_player_turn.clone(),
@@ -68,6 +71,7 @@ impl GameEventHandlers {
                     .map(|player| player.uuid.clone())
                     .collect(),
                 card_counts.clone(),
+                last_plays_by_player.clone(),
             );
 
             let message_json = serde_json::to_string(&player_message).map_err(|e| {

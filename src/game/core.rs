@@ -36,6 +36,7 @@ pub struct Game {
     consecutive_passes: usize,
     played_hands: Vec<Hand>,
     starting_hands: std::collections::HashMap<String, Vec<Card>>, // Player name -> starting cards
+    last_play_by_player: std::collections::HashMap<String, Vec<Card>>, // Player UUID -> last played cards
 }
 
 impl Game {
@@ -54,6 +55,7 @@ impl Game {
             consecutive_passes,
             played_hands,
             starting_hands,
+            last_play_by_player: std::collections::HashMap::new(),
         }
     }
 
@@ -136,6 +138,10 @@ impl Game {
             return Err(GameError::CannotPass);
         }
 
+        // Track the pass for this player (empty vec indicates pass)
+        let player_uuid = self.players[self.current_turn].uuid.clone();
+        self.last_play_by_player.insert(player_uuid, vec![]);
+
         self.consecutive_passes += 1;
         self.played_hands.push(Hand::Pass);
         self.advance_turn();
@@ -190,6 +196,17 @@ impl Game {
     }
 
     fn execute_card_play(&mut self, cards: &[Card], new_hand: Hand) -> bool {
+        // Track the cards played for this player
+        let player_uuid = self.players[self.current_turn].uuid.clone();
+
+        // Clear all last plays when table is cleared (3 consecutive passes followed by a play)
+        // This happens when consecutive_passes == 3, which means a new round is starting
+        if self.consecutive_passes == 3 {
+            self.last_play_by_player.clear();
+        }
+
+        self.last_play_by_player.insert(player_uuid, cards.to_vec());
+
         // Remove played cards from the player's hand
         let current_player = &mut self.players[self.current_turn];
         for card in cards {
@@ -277,6 +294,12 @@ impl Game {
     #[allow(dead_code)] // Public API for accessing initial card distribution
     pub fn starting_hands(&self) -> &std::collections::HashMap<String, Vec<Card>> {
         &self.starting_hands
+    }
+
+    /// Get the last cards played by each player (UUID -> cards)
+    /// Empty vec indicates the player passed on their last turn
+    pub fn last_plays_by_player(&self) -> &std::collections::HashMap<String, Vec<Card>> {
+        &self.last_play_by_player
     }
 }
 
