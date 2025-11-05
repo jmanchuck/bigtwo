@@ -149,7 +149,16 @@ impl GameEventHandlers {
                 room_id = %room_id,
                 "Not all human players are ready, cannot start game"
             );
-            // TODO: Send error message back to host
+            // Send error message back to host
+            self.event_bus
+                .emit_to_room(
+                    room_id,
+                    RoomEvent::ErrorMessage {
+                        player: host.to_string(),
+                        error: "Cannot start game: not all human players are ready".to_string(),
+                    },
+                )
+                .await;
             return Ok(());
         }
 

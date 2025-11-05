@@ -59,13 +59,16 @@ impl InMemorySessionRepository {
     /// Returns the current number of sessions in the repository
     #[allow(dead_code)] // Public API for monitoring session counts
     pub fn session_count(&self) -> usize {
-        self.sessions.lock().unwrap().len()
+        self.sessions.lock().expect("Session mutex poisoned").len()
     }
 
     /// Checks if a session exists by ID (useful for debugging)
     #[allow(dead_code)] // Public API for checking session existence
     pub fn has_session(&self, session_id: &str) -> bool {
-        self.sessions.lock().unwrap().contains_key(session_id)
+        self.sessions
+            .lock()
+            .expect("Session mutex poisoned")
+            .contains_key(session_id)
     }
 }
 
@@ -75,7 +78,10 @@ impl SessionRepository for InMemorySessionRepository {
     async fn create_session(&self, session: &SessionModel) -> Result<(), AppError> {
         debug!(session_id = %session.id, username = %session.username, "Creating session in memory");
 
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock().map_err(|e| {
+            warn!(error = ?e, "Session mutex poisoned");
+            AppError::Internal
+        })?;
         if sessions.contains_key(&session.id) {
             warn!(session_id = %session.id, "Session already exists in memory");
             return Err(AppError::DatabaseError(
@@ -92,7 +98,10 @@ impl SessionRepository for InMemorySessionRepository {
     async fn get_session(&self, session_id: &str) -> Result<Option<SessionModel>, AppError> {
         debug!(session_id = %session_id, "Fetching session from memory");
 
-        let sessions = self.sessions.lock().unwrap();
+        let sessions = self.sessions.lock().map_err(|e| {
+            warn!(error = ?e, "Session mutex poisoned");
+            AppError::Internal
+        })?;
         let session = sessions.get(session_id).cloned();
 
         match &session {
@@ -109,7 +118,10 @@ impl SessionRepository for InMemorySessionRepository {
     async fn update_session(&self, session: &SessionModel) -> Result<(), AppError> {
         debug!(session_id = %session.id, "Updating session in memory");
 
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock().map_err(|e| {
+            warn!(error = ?e, "Session mutex poisoned");
+            AppError::Internal
+        })?;
         if !sessions.contains_key(&session.id) {
             warn!(session_id = %session.id, "Session not found for update in memory");
             return Err(AppError::NotFound("Session not found".to_string()));
@@ -124,7 +136,10 @@ impl SessionRepository for InMemorySessionRepository {
     async fn delete_session(&self, session_id: &str) -> Result<(), AppError> {
         debug!(session_id = %session_id, "Deleting session from memory");
 
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock().map_err(|e| {
+            warn!(error = ?e, "Session mutex poisoned");
+            AppError::Internal
+        })?;
         if sessions.remove(session_id).is_none() {
             warn!(session_id = %session_id, "Session not found for deletion in memory");
             return Err(AppError::NotFound("Session not found".to_string()));
@@ -138,7 +153,10 @@ impl SessionRepository for InMemorySessionRepository {
     async fn cleanup_expired_sessions(&self) -> Result<u64, AppError> {
         debug!("Cleaning up expired sessions from memory");
 
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.sessions.lock().map_err(|e| {
+            warn!(error = ?e, "Session mutex poisoned");
+            AppError::Internal
+        })?;
         let now = Utc::now();
         let initial_count = sessions.len();
 
