@@ -351,11 +351,19 @@ async fn handle_websocket_connection(
                 .map(|p| (p.uuid.clone(), p.cards.len()))
                 .collect();
 
+            // Convert last plays by player from Card to String
+            let last_plays_by_player: std::collections::HashMap<String, Vec<String>> = game
+                .last_plays_by_player()
+                .iter()
+                .map(|(uuid, cards)| (uuid.clone(), cards.iter().map(|c| c.to_string()).collect()))
+                .collect();
+
             let hydration_message = crate::websockets::messages::WebSocketMessage::game_started(
                 game.current_player_turn().clone(),
                 player.cards.iter().map(|card| card.to_string()).collect(),
                 game.players().iter().map(|p| p.uuid.clone()).collect(),
                 card_counts,
+                last_plays_by_player,
             );
 
             if let Ok(message_json) = serde_json::to_string(&hydration_message) {

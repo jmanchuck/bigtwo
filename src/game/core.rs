@@ -36,6 +36,7 @@ pub struct Game {
     consecutive_passes: usize,
     played_hands: Vec<Hand>,
     starting_hands: std::collections::HashMap<String, Vec<Card>>, // Player name -> starting cards
+    last_play_by_player: std::collections::HashMap<String, Vec<Card>>, // Player UUID -> last played cards
 }
 
 impl Game {
@@ -54,6 +55,7 @@ impl Game {
             consecutive_passes,
             played_hands,
             starting_hands,
+            last_play_by_player: std::collections::HashMap::new(),
         }
     }
 
@@ -136,6 +138,10 @@ impl Game {
             return Err(GameError::CannotPass);
         }
 
+        // Track the pass for this player (empty vec indicates pass)
+        let player_uuid = self.players[self.current_turn].uuid.clone();
+        self.last_play_by_player.insert(player_uuid, vec![]);
+
         self.consecutive_passes += 1;
         self.played_hands.push(Hand::Pass);
         self.advance_turn();
@@ -190,6 +196,17 @@ impl Game {
     }
 
     fn execute_card_play(&mut self, cards: &[Card], new_hand: Hand) -> bool {
+        // Track the cards played for this player
+        let player_uuid = self.players[self.current_turn].uuid.clone();
+
+        // Clear all last plays when table is cleared (3 consecutive passes followed by a play)
+        // This happens when consecutive_passes == 3, which means a new round is starting
+        if self.consecutive_passes == 3 {
+            self.last_play_by_player.clear();
+        }
+
+        self.last_play_by_player.insert(player_uuid, cards.to_vec());
+
         // Remove played cards from the player's hand
         let current_player = &mut self.players[self.current_turn];
         for card in cards {
@@ -277,6 +294,17 @@ impl Game {
     #[allow(dead_code)] // Public API for accessing initial card distribution
     pub fn starting_hands(&self) -> &std::collections::HashMap<String, Vec<Card>> {
         &self.starting_hands
+    }
+
+    /// Get the last cards played by each player (UUID -> cards)
+    ///
+    /// Returns a reference to a HashMap mapping player UUIDs to their most recent play.
+    /// - Empty vec (`[]`) indicates the player passed on their last turn
+    /// - Non-empty vec contains the actual cards played
+    /// - Players who haven't acted yet won't have entries in the map
+    /// - All entries are cleared when the table resets (after 3 consecutive passes followed by a play)
+    pub fn last_plays_by_player(&self) -> &std::collections::HashMap<String, Vec<Card>> {
+        &self.last_play_by_player
     }
 }
 
@@ -1027,5 +1055,297 @@ mod tests {
         assert!(result2.is_ok());
         // In a 2-player game, after both players play once, it cycles back to Alice (0 -> 1 -> 0)
         assert_eq!(game.current_player_turn(), "alice-uuid");
+    }
+
+    #[test]
+    fn test_last_plays_tracking() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Nine, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Six, Suit::Clubs),
+                    Card::new(Rank::Seven, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Charlie".to_string(),
+                uuid: "charlie-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Eight, Suit::Diamonds),
+                    Card::new(Rank::Ten, Suit::Spades),
+                ],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![],
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
+        );
+
+        // Initially, no one has played
+        assert_eq!(game.last_plays_by_player().len(), 0);
+
+        // Alice plays 3 of diamonds
+        let result1 = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result1.is_ok());
+
+        // Check Alice's last play is tracked
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 1);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+
+        // Bob plays a higher card
+        let result2 = game.play_cards("bob-uuid", &[Card::new(Rank::Six, Suit::Clubs)]);
+        assert!(result2.is_ok());
+
+        // Check both plays are tracked
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 2);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+        assert_eq!(
+            last_plays.get("bob-uuid"),
+            Some(&vec![Card::new(Rank::Six, Suit::Clubs)])
+        );
+
+        // Charlie plays a higher card
+        let result3 = game.play_cards("charlie-uuid", &[Card::new(Rank::Eight, Suit::Diamonds)]);
+        assert!(result3.is_ok());
+
+        // Check all three plays are tracked
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 3);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+        assert_eq!(
+            last_plays.get("bob-uuid"),
+            Some(&vec![Card::new(Rank::Six, Suit::Clubs)])
+        );
+        assert_eq!(
+            last_plays.get("charlie-uuid"),
+            Some(&vec![Card::new(Rank::Eight, Suit::Diamonds)])
+        );
+
+        // Alice plays again with a higher card (updating her last play)
+        let result4 = game.play_cards("alice-uuid", &[Card::new(Rank::Nine, Suit::Hearts)]);
+        assert!(result4.is_ok());
+
+        // Check Alice's last play is updated
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 3);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Nine, Suit::Hearts)])
+        );
+    }
+
+    #[test]
+    fn test_last_plays_cleared_after_table_reset() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Four, Suit::Hearts),
+                    Card::new(Rank::Five, Suit::Spades),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Six, Suit::Clubs),
+                    Card::new(Rank::Seven, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Charlie".to_string(),
+                uuid: "charlie-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Eight, Suit::Diamonds),
+                    Card::new(Rank::Nine, Suit::Spades),
+                ],
+            },
+            Player {
+                name: "David".to_string(),
+                uuid: "david-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Ten, Suit::Clubs),
+                    Card::new(Rank::Jack, Suit::Hearts),
+                ],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![],
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
+        );
+
+        // Alice plays 3 of diamonds
+        let result1 = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result1.is_ok());
+
+        // Verify Alice's play is tracked
+        assert_eq!(game.last_plays_by_player().len(), 1);
+        assert_eq!(
+            game.last_plays_by_player().get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+
+        // Bob, Charlie, and David all pass
+        let result2 = game.play_cards("bob-uuid", &[]);
+        assert!(result2.is_ok());
+        let result3 = game.play_cards("charlie-uuid", &[]);
+        assert!(result3.is_ok());
+        let result4 = game.play_cards("david-uuid", &[]);
+        assert!(result4.is_ok());
+
+        // At this point, we have 3 consecutive passes
+        assert_eq!(game.consecutive_passes(), 3);
+
+        // All players should have their last plays tracked (Alice played, others passed)
+        assert_eq!(game.last_plays_by_player().len(), 4);
+
+        // Alice plays again (table reset happens now because consecutive_passes == 3)
+        let result5 = game.play_cards("alice-uuid", &[Card::new(Rank::Four, Suit::Hearts)]);
+        assert!(result5.is_ok());
+
+        // After table reset, all previous last plays should be cleared
+        // Only Alice's new play should be tracked
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 1);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Four, Suit::Hearts)])
+        );
+        assert_eq!(last_plays.get("bob-uuid"), None);
+        assert_eq!(last_plays.get("charlie-uuid"), None);
+        assert_eq!(last_plays.get("david-uuid"), None);
+    }
+
+    #[test]
+    fn test_pass_represented_as_empty_vector() {
+        let players = vec![
+            Player {
+                name: "Alice".to_string(),
+                uuid: "alice-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Three, Suit::Diamonds),
+                    Card::new(Rank::Four, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Bob".to_string(),
+                uuid: "bob-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Six, Suit::Clubs),
+                    Card::new(Rank::Seven, Suit::Hearts),
+                ],
+            },
+            Player {
+                name: "Charlie".to_string(),
+                uuid: "charlie-uuid".to_string(),
+                cards: vec![
+                    Card::new(Rank::Eight, Suit::Diamonds),
+                    Card::new(Rank::Nine, Suit::Spades),
+                ],
+            },
+        ];
+
+        let mut game = Game::new(
+            "test".to_string(),
+            players.clone(),
+            0, // Alice's turn
+            0,
+            vec![],
+            players
+                .iter()
+                .map(|player| (player.uuid.clone(), player.cards.clone()))
+                .collect(),
+        );
+
+        // Alice plays 3 of diamonds
+        let result1 = game.play_cards("alice-uuid", &[Card::new(Rank::Three, Suit::Diamonds)]);
+        assert!(result1.is_ok());
+
+        // Alice's play should be tracked as non-empty vector
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 1);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+
+        // Bob passes
+        let result2 = game.play_cards("bob-uuid", &[]);
+        assert!(result2.is_ok());
+
+        // Bob's pass should be tracked as empty vector
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 2);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+        assert_eq!(last_plays.get("bob-uuid"), Some(&vec![])); // Empty vec for pass
+
+        // Charlie also passes
+        let result3 = game.play_cards("charlie-uuid", &[]);
+        assert!(result3.is_ok());
+
+        // Charlie's pass should also be tracked as empty vector
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 3);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Three, Suit::Diamonds)])
+        );
+        assert_eq!(last_plays.get("bob-uuid"), Some(&vec![])); // Empty vec for pass
+        assert_eq!(last_plays.get("charlie-uuid"), Some(&vec![])); // Empty vec for pass
+
+        // Alice plays again (after 2 passes, she can play again)
+        let result4 = game.play_cards("alice-uuid", &[Card::new(Rank::Four, Suit::Hearts)]);
+        assert!(result4.is_ok());
+
+        // Alice's last play should be updated, Bob and Charlie's passes should remain
+        let last_plays = game.last_plays_by_player();
+        assert_eq!(last_plays.len(), 3);
+        assert_eq!(
+            last_plays.get("alice-uuid"),
+            Some(&vec![Card::new(Rank::Four, Suit::Hearts)])
+        );
+        assert_eq!(last_plays.get("bob-uuid"), Some(&vec![])); // Still empty for pass
+        assert_eq!(last_plays.get("charlie-uuid"), Some(&vec![])); // Still empty for pass
     }
 }

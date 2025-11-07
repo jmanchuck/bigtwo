@@ -96,6 +96,7 @@ pub struct GameStartedPayload {
     pub cards: Vec<String>, // Player's hand
     pub player_list: Vec<String>,
     pub card_counts: std::collections::HashMap<String, usize>, // UUID -> card count
+    pub last_plays_by_player: std::collections::HashMap<String, Vec<String>>, // UUID -> last played cards
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,12 +184,14 @@ impl WebSocketMessage {
         cards: Vec<String>,
         player_list: Vec<String>,
         card_counts: std::collections::HashMap<String, usize>,
+        last_plays_by_player: std::collections::HashMap<String, Vec<String>>,
     ) -> Self {
         let payload = GameStartedPayload {
             current_turn,
             cards,
             player_list,
             card_counts,
+            last_plays_by_player,
         };
         Self::new(
             MessageType::GameStarted,
@@ -308,11 +311,13 @@ mod tests {
         // game_started
         let mut card_counts = std::collections::HashMap::new();
         card_counts.insert("u1".to_string(), 13);
+        let last_plays = std::collections::HashMap::new();
         let gs = WebSocketMessage::game_started(
             "u1".to_string(),
             vec!["3D".to_string()],
             vec!["u1".to_string()],
             card_counts,
+            last_plays,
         );
         assert!(matches!(gs.message_type, MessageType::GameStarted));
 
