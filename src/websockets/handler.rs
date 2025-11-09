@@ -125,7 +125,16 @@ impl MessageHandler for WebsocketReceiveHandler {
                                     error = %e,
                                     "Invalid card format in move"
                                 );
-                                // TODO: Send error message back to client
+                                // Send error message back to client
+                                self.event_bus
+                                    .emit_to_room(
+                                        room_id,
+                                        RoomEvent::ErrorMessage {
+                                            player: username.to_string(),
+                                            error: format!("Invalid card format: {}", e),
+                                        },
+                                    )
+                                    .await;
                             }
                         }
                     }

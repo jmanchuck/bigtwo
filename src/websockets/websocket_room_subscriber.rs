@@ -171,6 +171,26 @@ impl RoomEventHandler for WebSocketRoomSubscriber {
 
                 Ok(())
             }
+            RoomEvent::ErrorMessage { player, error } => {
+                // Send error message to specific player
+                let error_message = super::messages::WebSocketMessage::error(&error);
+
+                if let Ok(message_json) = serde_json::to_string(&error_message) {
+                    self.room_handlers
+                        .connection_manager
+                        .send_to_player(&player, &message_json)
+                        .await;
+
+                    info!(
+                        room_id = %room_id,
+                        player = %player,
+                        error = %error,
+                        "Sent error message to player"
+                    );
+                }
+
+                Ok(())
+            }
             _ => {
                 info!(
                     room_id = %room_id,

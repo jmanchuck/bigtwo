@@ -54,4 +54,6 @@ pub enum RoomEvent {
     },
     /// Heartbeat received from a player (for connection health check)
     HeartbeatReceived { player: String },
+    /// Error message to be sent to a specific player
+    ErrorMessage { player: String, error: String },
 }

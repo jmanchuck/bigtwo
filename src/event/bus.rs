@@ -78,4 +78,13 @@ impl EventBus {
             receiver
         }
     }
+
+    /// Cleanup a room's event channel when the room is deleted
+    /// This prevents memory leaks by removing unused channels
+    pub async fn cleanup_room(&self, room_id: &str) {
+        let mut room_channels = self.room_channels.write().await;
+        if room_channels.remove(room_id).is_some() {
+            info!(room_id = %room_id, "Room event channel cleaned up");
+        }
+    }
 }

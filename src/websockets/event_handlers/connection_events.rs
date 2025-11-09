@@ -121,6 +121,9 @@ impl ConnectionEventHandlers {
                         );
                     }
                 }
+
+                // Clean up event bus channels to prevent memory leaks
+                self.event_bus.cleanup_room(room_id).await;
             }
             Ok(_) => {
                 info!(

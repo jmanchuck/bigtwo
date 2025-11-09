@@ -102,7 +102,10 @@ impl InMemoryRoomRepository {
 impl RoomRepository for InMemoryRoomRepository {
     #[instrument(skip(self, room))]
     async fn create_room(&self, room: &RoomModel) -> Result<(), AppError> {
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
         if rooms.contains_key(&room.id) {
             warn!(room_id = %room.id, "Room already exists in memory");
             return Err(AppError::DatabaseError("Room already exists".to_string()));
@@ -117,7 +120,10 @@ impl RoomRepository for InMemoryRoomRepository {
     async fn get_room(&self, room_id: &str) -> Result<Option<RoomModel>, AppError> {
         debug!(room_id = %room_id, "Fetching room from memory");
 
-        let rooms = self.rooms.lock().unwrap();
+        let rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         Ok(rooms.get(room_id).cloned())
     }
@@ -126,7 +132,10 @@ impl RoomRepository for InMemoryRoomRepository {
     async fn list_rooms(&self) -> Result<Vec<RoomModel>, AppError> {
         debug!("Listing all rooms in memory");
 
-        let rooms = self.rooms.lock().unwrap();
+        let rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
         let room_list = rooms.values().cloned().collect();
 
         debug!("Rooms listed successfully in memory");
@@ -145,7 +154,10 @@ impl RoomRepository for InMemoryRoomRepository {
             "Attempting to join room atomically with UUID"
         );
 
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         // Get the room or return RoomNotFound
         let room = match rooms.get_mut(room_id) {
@@ -200,7 +212,10 @@ impl RoomRepository for InMemoryRoomRepository {
             "Attempting to leave room atomically with UUID"
         );
 
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         // Get the room or return RoomNotFound
         let room = match rooms.get_mut(room_id) {
@@ -289,7 +304,10 @@ impl RoomRepository for InMemoryRoomRepository {
             "Toggling ready state"
         );
 
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         let room = rooms.get_mut(room_id).ok_or_else(|| {
             warn!(room_id = %room_id, "Room not found");
@@ -322,7 +340,10 @@ impl RoomRepository for InMemoryRoomRepository {
             "Setting ready state"
         );
 
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         let room = rooms.get_mut(room_id).ok_or_else(|| {
             warn!(room_id = %room_id, "Room not found");
@@ -345,7 +366,10 @@ impl RoomRepository for InMemoryRoomRepository {
     async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError> {
         debug!(room_id = %room_id, "Clearing all ready states");
 
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         let room = rooms.get_mut(room_id).ok_or_else(|| {
             warn!(room_id = %room_id, "Room not found");
@@ -365,7 +389,10 @@ impl RoomRepository for InMemoryRoomRepository {
         room_id: &str,
         player_uuid: &str,
     ) -> Result<(), AppError> {
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         let room = rooms.get_mut(room_id).ok_or_else(|| {
             warn!(room_id = %room_id, "Room not found when marking disconnected");
@@ -383,7 +410,10 @@ impl RoomRepository for InMemoryRoomRepository {
         room_id: &str,
         player_uuid: &str,
     ) -> Result<(), AppError> {
-        let mut rooms = self.rooms.lock().unwrap();
+        let mut rooms = self.rooms.lock().map_err(|e| {
+            warn!(error = ?e, "Room mutex poisoned");
+            AppError::Internal
+        })?;
 
         let room = rooms.get_mut(room_id).ok_or_else(|| {
             warn!(room_id = %room_id, "Room not found when marking connected");
@@ -878,6 +908,260 @@ mod tests {
                 assert!(!updated_room.has_player("human-host"));
             }
             _ => panic!("Expected success, got {:?}", result),
+        }
+    }
+
+    // Concurrency tests
+    #[tokio::test]
+    async fn test_concurrent_room_joins_respect_capacity() {
+        use std::sync::Arc;
+
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let room = create_test_room_with_host("test-room", "host");
+        repo.create_room(&room).await.unwrap();
+
+        // Spawn 10 concurrent join attempts (room capacity is 4, host is already in)
+        let mut handles = vec![];
+        for i in 0..10 {
+            let repo_clone = repo.clone();
+            let player_uuid = format!("player-{}", i);
+            handles.push(tokio::spawn(async move {
+                repo_clone.try_join_room("test-room", &player_uuid).await
+            }));
+        }
+
+        // Wait for all joins to complete
+        let results = futures::future::join_all(handles).await;
+
+        // Count successes and failures
+        let mut successes = 0;
+        let mut room_full = 0;
+
+        for result in results {
+            let join_result = result.unwrap().unwrap();
+            match join_result {
+                JoinRoomResult::Success(_) => successes += 1,
+                JoinRoomResult::RoomFull => room_full += 1,
+                _ => panic!("Unexpected result"),
+            }
+        }
+
+        // Exactly 3 should succeed (capacity 4, host already in)
+        assert_eq!(successes, 3, "Expected exactly 3 successful joins");
+        assert_eq!(room_full, 7, "Expected 7 room full responses");
+
+        // Verify final room state
+        let final_room = repo.get_room("test-room").await.unwrap().unwrap();
+        assert_eq!(final_room.get_player_count(), 4);
+        assert!(final_room.is_full());
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_room_creation_prevents_duplicates() {
+        use std::sync::Arc;
+
+        let repo = Arc::new(InMemoryRoomRepository::new());
+
+        // Try to create the same room concurrently 5 times
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let repo_clone = repo.clone();
+            handles.push(tokio::spawn(async move {
+                let room = create_test_room_with_host("concurrent-room", "host");
+                repo_clone.create_room(&room).await
+            }));
+        }
+
+        let results = futures::future::join_all(handles).await;
+
+        // Exactly one should succeed, others should fail
+        let successes = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_ok())
+            .count();
+        let failures = results
+            .iter()
+            .filter(|r| r.as_ref().unwrap().is_err())
+            .count();
+
+        assert_eq!(successes, 1, "Expected exactly 1 successful creation");
+        assert_eq!(failures, 4, "Expected 4 failed creations");
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_ready_state_changes() {
+        use std::sync::Arc;
+
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let mut room = create_test_room_with_host("test-room", "host");
+        room.add_player("player1".to_string());
+        room.add_player("player2".to_string());
+        room.add_player("player3".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Concurrently toggle ready for all players multiple times
+        let mut handles = vec![];
+        for player in &["host", "player1", "player2", "player3"] {
+            for _ in 0..10 {
+                let repo_clone = repo.clone();
+                let player_uuid = player.to_string();
+                handles.push(tokio::spawn(async move {
+                    repo_clone.toggle_ready("test-room", &player_uuid).await
+                }));
+            }
+        }
+
+        // Wait for all toggles to complete
+        let results = futures::future::join_all(handles).await;
+
+        // All should succeed
+        for result in results {
+            result.unwrap().unwrap();
+        }
+
+        // Final state is deterministic - each player toggled 10 times (even number)
+        // So all should be unready
+        let final_room = repo.get_room("test-room").await.unwrap().unwrap();
+        assert_eq!(final_room.get_ready_players().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_player_connection_changes() {
+        use std::sync::Arc;
+
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let mut room = create_test_room_with_host("test-room", "host");
+        room.add_player("player1".to_string());
+        room.add_player("player2".to_string());
+        repo.create_room(&room).await.unwrap();
+
+        // Concurrently mark players as connected/disconnected
+        let mut handles = vec![];
+        for player in &["host", "player1", "player2"] {
+            for _ in 0..5 {
+                let repo_clone = repo.clone();
+                let player_uuid = player.to_string();
+
+                // Mark connected
+                handles.push(tokio::spawn({
+                    let repo = repo_clone.clone();
+                    let uuid = player_uuid.clone();
+                    async move { repo.mark_player_connected("test-room", &uuid).await }
+                }));
+
+                // Mark disconnected
+                handles.push(tokio::spawn({
+                    let repo = repo_clone;
+                    let uuid = player_uuid;
+                    async move { repo.mark_player_disconnected("test-room", &uuid).await }
+                }));
+            }
+        }
+
+        // Wait for all operations to complete
+        let results = futures::future::join_all(handles).await;
+
+        // All should succeed (idempotent operations)
+        for result in results {
+            result.unwrap().unwrap();
+        }
+
+        // Room should still exist and have all players
+        let final_room = repo.get_room("test-room").await.unwrap().unwrap();
+        assert_eq!(final_room.get_player_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_join_and_leave_operations() {
+        use std::sync::Arc;
+
+        let repo = Arc::new(InMemoryRoomRepository::new());
+        let room = create_test_room_with_host("test-room", "host");
+        repo.create_room(&room).await.unwrap();
+
+        // Concurrently join and leave with different players
+        let mut handles = vec![];
+
+        // Join operations
+        for i in 0..3 {
+            let repo_clone = repo.clone();
+            let player_uuid = format!("player-{}", i);
+            handles.push(tokio::spawn(async move {
+                repo_clone.try_join_room("test-room", &player_uuid).await
+            }));
+        }
+
+        // Wait a bit for joins to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Leave operations (some may not have joined yet, that's ok)
+        for i in 0..3 {
+            let repo_clone = repo.clone();
+            let player_uuid = format!("player-{}", i);
+            handles.push(tokio::spawn(async move {
+                repo_clone.leave_room("test-room", &player_uuid).await
+            }));
+        }
+
+        // Wait for all operations
+        let _ = futures::future::join_all(handles).await;
+
+        // Room should still exist (host is still there)
+        let final_room = repo.get_room("test-room").await.unwrap();
+        assert!(final_room.is_some());
+
+        // Host should still be in the room
+        let room = final_room.unwrap();
+        assert!(room.has_player("host"));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_operations_maintain_consistency() {
+        use std::sync::Arc;
+
+        let repo = Arc::new(InMemoryRoomRepository::new());
+
+        // Create multiple rooms concurrently
+        let mut handles = vec![];
+        for i in 0..10 {
+            let repo_clone = repo.clone();
+            handles.push(tokio::spawn(async move {
+                let room =
+                    create_test_room_with_host(&format!("room-{}", i), &format!("host-{}", i));
+                repo_clone.create_room(&room).await
+            }));
+        }
+
+        futures::future::join_all(handles).await;
+
+        // List rooms - should have all 10
+        let rooms = repo.list_rooms().await.unwrap();
+        assert_eq!(rooms.len(), 10);
+
+        // Concurrently add players to all rooms
+        let mut handles = vec![];
+        for i in 0..10 {
+            for j in 0..3 {
+                let repo_clone = repo.clone();
+                let room_id = format!("room-{}", i);
+                let player_uuid = format!("player-{}-{}", i, j);
+                handles.push(tokio::spawn(async move {
+                    repo_clone.try_join_room(&room_id, &player_uuid).await
+                }));
+            }
+        }
+
+        futures::future::join_all(handles).await;
+
+        // Verify all rooms have correct player counts
+        let rooms = repo.list_rooms().await.unwrap();
+        for room in rooms {
+            assert_eq!(
+                room.get_player_count(),
+                4,
+                "Room {} should have 4 players (host + 3 joined)",
+                room.id
+            );
         }
     }
 }
