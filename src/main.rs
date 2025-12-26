@@ -92,13 +92,31 @@ async fn main() {
             .build(),
     );
     // Create RoomService focused purely on business logic
-    let room_service = Arc::new(RoomService::new(room_repository));
+    let room_service = Arc::new(RoomService::new(room_repository.clone()));
+
+    // Activity tracking: monitors room events and updates activity timestamps
+    let activity_tracker = Arc::new(room::activity_tracker::ActivityTracker::new(
+        room_repository.clone(),
+    ));
+    let activity_subscriber = Arc::new(
+        room::activity_room_subscriber::ActivityRoomSubscriber::new(activity_tracker),
+    );
+
+    // Spawn background cleanup task for inactive rooms
+    let cleanup_config = room::cleanup_task::CleanupConfig::default();
+    tokio::spawn(room::cleanup_task::start_cleanup_task(
+        room_repository.clone(),
+        game_service.clone(),
+        Arc::new(event_bus.clone()),
+        cleanup_config,
+    ));
 
     let app_state = AppState::builder()
         .with_session_repository(session_repository)
         .with_session_service(session_service)
         .with_room_service(room_service)
         .with_event_bus(event_bus)
+        .with_activity_subscriber(activity_subscriber)
         .with_connection_manager(connection_manager)
         .with_game_service(game_service)
         .with_player_mapping(player_mapping)

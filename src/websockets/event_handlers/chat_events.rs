@@ -88,6 +88,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_chat_message_broadcasts_to_room_players() {
         let repo = Arc::new(InMemoryRoomRepository::new());
+        let now = chrono::Utc::now();
         let room = RoomModel {
             id: "r1".into(),
             host_uuid: Some("h".into()),
@@ -95,6 +96,8 @@ mod tests {
             player_uuids: vec!["a".into(), "b".into()],
             ready_players: vec![],
             connected_players: vec!["a".into(), "b".into()],
+            created_at: now,
+            last_activity_at: now,
         };
         repo.create_room(&room).await.unwrap();
         let room_service = Arc::new(RoomService::new(repo));
