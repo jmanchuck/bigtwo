@@ -113,6 +113,7 @@ impl TestSetupBuilder {
         );
 
         // Create room
+        let now = chrono::Utc::now();
         let room = RoomModel {
             id: self.room_id.clone(),
             host_uuid: Some(self.players.first().unwrap().0.clone()),
@@ -121,6 +122,8 @@ impl TestSetupBuilder {
             // Mark all players as ready by default for testing
             ready_players: self.players.iter().map(|p| p.0.clone()).collect(),
             connected_players: self.players.iter().map(|p| p.0.clone()).collect(),
+            created_at: now,
+            last_activity_at: now,
         };
         repo.create_room(&room).await.unwrap();
 

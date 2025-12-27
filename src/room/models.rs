@@ -1,21 +1,25 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 /// Database model for rooms table
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct RoomModel {
-    pub id: String,                     // Random pet name generated ID
-    pub host_uuid: Option<String>,      // UUID of room host
-    pub status: String,                 // "ONLINE" or "OFFLINE"
-    pub player_uuids: Vec<String>,      // List of player UUIDs in this room (for internal use)
-    pub ready_players: Vec<String>,     // List of player UUIDs who are ready to start
-    pub connected_players: Vec<String>, // Players currently connected via WebSocket
+    pub id: String,                      // Random pet name generated ID
+    pub host_uuid: Option<String>,       // UUID of room host
+    pub status: String,                  // "ONLINE" or "OFFLINE"
+    pub player_uuids: Vec<String>,       // List of player UUIDs in this room (for internal use)
+    pub ready_players: Vec<String>,      // List of player UUIDs who are ready to start
+    pub connected_players: Vec<String>,  // Players currently connected via WebSocket
+    pub created_at: DateTime<Utc>,       // When the room was created
+    pub last_activity_at: DateTime<Utc>, // Last time there was activity in the room
 }
 
 impl RoomModel {
     /// Creates a new room model with generated ID
     pub fn new(host_uuid: String) -> Self {
         let room_id = petname::Petnames::default().generate_one(2, "");
+        let now = Utc::now();
 
         Self {
             id: room_id,
@@ -24,6 +28,8 @@ impl RoomModel {
             player_uuids: vec![],  // Host UUID will be added when they join
             ready_players: vec![], // No players ready initially
             connected_players: vec![],
+            created_at: now,
+            last_activity_at: now,
         }
     }
 

@@ -40,6 +40,7 @@ mod tests {
         let service = Arc::new(RoomService::new(repo.clone()));
 
         // Create a room
+        let now = chrono::Utc::now();
         let room = crate::room::models::RoomModel {
             id: "r1".to_string(),
             host_uuid: Some("h".to_string()),
@@ -47,6 +48,8 @@ mod tests {
             player_uuids: vec![],
             ready_players: vec![],
             connected_players: vec![],
+            created_at: now,
+            last_activity_at: now,
         };
         repo.create_room(&room).await.unwrap();
 
@@ -78,6 +81,7 @@ mod tests {
         assert!(none.is_none());
 
         // Create one and fetch
+        let now = chrono::Utc::now();
         let room = crate::room::models::RoomModel {
             id: "r2".to_string(),
             host_uuid: Some("h".to_string()),
@@ -85,6 +89,8 @@ mod tests {
             player_uuids: vec![],
             ready_players: vec![],
             connected_players: vec![],
+            created_at: now,
+            last_activity_at: now,
         };
         repo.create_room(&room).await.unwrap();
         let some = RoomQueryUtils::get_room_if_exists(&service, "r2")

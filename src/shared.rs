@@ -8,6 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::bot::BotManager;
+use crate::event::RoomEventHandler;
 use crate::room::repository::RoomRepository;
 use crate::room::service::RoomService;
 use crate::session::repository::SessionRepository;
@@ -27,6 +28,7 @@ pub struct AppState {
     pub player_mapping: Arc<dyn PlayerMappingService>,
     pub bot_manager: Arc<BotManager>,
     pub stats_service: Arc<StatsService>,
+    pub activity_subscriber: Arc<dyn RoomEventHandler>,
 }
 
 impl AppState {
@@ -42,6 +44,7 @@ impl AppState {
         player_mapping: Arc<dyn PlayerMappingService>,
         bot_manager: Arc<BotManager>,
         stats_service: Arc<StatsService>,
+        activity_subscriber: Arc<dyn RoomEventHandler>,
     ) -> Self {
         Self {
             session_service,
@@ -52,6 +55,7 @@ impl AppState {
             player_mapping,
             bot_manager,
             stats_service,
+            activity_subscriber,
         }
     }
 
@@ -73,6 +77,7 @@ pub struct AppStateBuilder {
     bot_manager: Option<Arc<BotManager>>,
     stats_repository: Option<Arc<dyn StatsRepository>>,
     stats_service: Option<Arc<StatsService>>,
+    activity_subscriber: Option<Arc<dyn RoomEventHandler>>,
 }
 
 #[derive(Error, Debug)]
@@ -95,6 +100,7 @@ impl AppStateBuilder {
             bot_manager: None,
             stats_repository: None,
             stats_service: None,
+            activity_subscriber: None,
         }
     }
 
@@ -159,6 +165,11 @@ impl AppStateBuilder {
         self
     }
 
+    pub fn with_activity_subscriber(mut self, subscriber: Arc<dyn RoomEventHandler>) -> Self {
+        self.activity_subscriber = Some(subscriber);
+        self
+    }
+
     /// Build AppState with validation
     pub fn build(self) -> Result<AppState, AppStateBuilderError> {
         let player_mapping = self
@@ -200,6 +211,12 @@ impl AppStateBuilder {
             )
         });
 
+        let activity_subscriber =
+            self.activity_subscriber
+                .ok_or(AppStateBuilderError::MissingDependency(
+                    "activity_subscriber",
+                ))?;
+
         Ok(AppState {
             session_service,
             room_service,
@@ -209,6 +226,7 @@ impl AppStateBuilder {
             player_mapping,
             bot_manager,
             stats_service,
+            activity_subscriber,
         })
     }
 
@@ -264,6 +282,17 @@ impl AppStateBuilder {
             )
         });
 
+        let activity_tracker = Arc::new(crate::room::activity_tracker::ActivityTracker::new(
+            Arc::new(crate::room::repository::InMemoryRoomRepository::new()),
+        ));
+        let activity_subscriber = self.activity_subscriber.unwrap_or_else(|| {
+            Arc::new(
+                crate::room::activity_room_subscriber::ActivityRoomSubscriber::new(
+                    activity_tracker,
+                ),
+            ) as Arc<dyn RoomEventHandler>
+        });
+
         AppState {
             session_service,
             room_service,
@@ -273,6 +302,7 @@ impl AppStateBuilder {
             player_mapping,
             bot_manager,
             stats_service,
+            activity_subscriber,
         }
     }
 }
@@ -382,6 +412,7 @@ pub mod test_utils {
             _room_id: &str,
             _player_name: &str,
         ) -> Result<crate::room::repository::JoinRoomResult, AppError> {
+            let now = chrono::Utc::now();
             Ok(crate::room::repository::JoinRoomResult::Success(
                 RoomModel {
                     id: "dummy-room".to_string(),
@@ -390,6 +421,8 @@ pub mod test_utils {
                     player_uuids: vec!["dummy-host-uuid".to_string()],
                     ready_players: vec![],
                     connected_players: vec!["dummy-host-uuid".to_string()],
+                    created_at: now,
+                    last_activity_at: now,
                 },
             ))
         }
@@ -433,6 +466,21 @@ pub mod test_utils {
             _room_id: &str,
             _player_uuid: &str,
         ) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn update_last_activity(&self, _room_id: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn get_inactive_rooms(
+            &self,
+            _inactive_duration: std::time::Duration,
+        ) -> Result<Vec<String>, AppError> {
+            Ok(Vec::new())
+        }
+
+        async fn delete_room(&self, _room_id: &str) -> Result<(), AppError> {
             Ok(())
         }
     }
@@ -498,6 +546,17 @@ pub mod test_utils {
                 )
             });
 
+            let activity_tracker = Arc::new(crate::room::activity_tracker::ActivityTracker::new(
+                Arc::new(DummyRoomRepository),
+            ));
+            let activity_subscriber = self.activity_subscriber.unwrap_or_else(|| {
+                Arc::new(
+                    crate::room::activity_room_subscriber::ActivityRoomSubscriber::new(
+                        activity_tracker,
+                    ),
+                ) as Arc<dyn RoomEventHandler>
+            });
+
             AppState {
                 session_service,
                 room_service,
@@ -509,6 +568,7 @@ pub mod test_utils {
                 player_mapping,
                 bot_manager,
                 stats_service,
+                activity_subscriber,
             }
         }
     }

@@ -76,6 +76,18 @@ pub trait RoomRepository {
 
     /// Clear all ready states in a room (called when game starts)
     async fn clear_ready_states(&self, room_id: &str) -> Result<(), AppError>;
+
+    /// Update the last activity timestamp for a room
+    async fn update_last_activity(&self, room_id: &str) -> Result<(), AppError>;
+
+    /// Get rooms that have been inactive for longer than the specified duration
+    async fn get_inactive_rooms(
+        &self,
+        inactive_duration: std::time::Duration,
+    ) -> Result<Vec<String>, AppError>;
+
+    /// Delete a room by ID
+    async fn delete_room(&self, room_id: &str) -> Result<(), AppError>;
 }
 
 /// In-memory implementation of RoomRepository for development and testing
@@ -394,6 +406,74 @@ impl RoomRepository for InMemoryRoomRepository {
 
         Ok(())
     }
+
+    #[instrument(skip(self))]
+    async fn update_last_activity(&self, room_id: &str) -> Result<(), AppError> {
+        debug!(room_id = %room_id, "Updating last activity timestamp");
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        let room = rooms.get_mut(room_id).ok_or_else(|| {
+            warn!(room_id = %room_id, "Room not found when updating activity");
+            AppError::NotFound("Room not found".to_string())
+        })?;
+
+        room.last_activity_at = chrono::Utc::now();
+
+        debug!(
+            room_id = %room_id,
+            last_activity = %room.last_activity_at,
+            "Last activity timestamp updated"
+        );
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn get_inactive_rooms(
+        &self,
+        inactive_duration: std::time::Duration,
+    ) -> Result<Vec<String>, AppError> {
+        debug!(
+            inactive_duration_secs = inactive_duration.as_secs(),
+            "Finding inactive rooms"
+        );
+
+        let rooms = self.rooms.lock().unwrap();
+        let now = chrono::Utc::now();
+        let threshold = now
+            - chrono::Duration::from_std(inactive_duration)
+                .map_err(|e| AppError::DatabaseError(format!("Invalid duration: {}", e)))?;
+
+        let inactive_room_ids: Vec<String> = rooms
+            .values()
+            .filter(|room| room.last_activity_at < threshold)
+            .map(|room| room.id.clone())
+            .collect();
+
+        info!(
+            count = inactive_room_ids.len(),
+            threshold = %threshold,
+            "Found inactive rooms"
+        );
+
+        Ok(inactive_room_ids)
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_room(&self, room_id: &str) -> Result<(), AppError> {
+        debug!(room_id = %room_id, "Deleting room");
+
+        let mut rooms = self.rooms.lock().unwrap();
+
+        if rooms.remove(room_id).is_some() {
+            info!(room_id = %room_id, "Room deleted successfully");
+            Ok(())
+        } else {
+            warn!(room_id = %room_id, "Room not found when attempting to delete");
+            Err(AppError::NotFound("Room not found".to_string()))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -402,6 +482,7 @@ mod tests {
 
     /// Creates a test room with a specific ID and host
     pub fn create_test_room_with_host(room_id: &str, host_uuid: &str) -> RoomModel {
+        let now = chrono::Utc::now();
         RoomModel {
             id: room_id.to_string(),
             host_uuid: Some(host_uuid.to_string()),
@@ -409,6 +490,8 @@ mod tests {
             player_uuids: vec![host_uuid.to_string()], // Test UUID for host
             ready_players: vec![],
             connected_players: vec![host_uuid.to_string()],
+            created_at: now,
+            last_activity_at: now,
         }
     }
 

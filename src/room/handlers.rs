@@ -106,6 +106,17 @@ pub async fn create_room(
     );
     // Start background task - we don't need to track the JoinHandle
     drop(stats_subscription.start().await);
+
+    // Set up activity tracking subscription for this room
+    let activity_subscriber = Arc::clone(&state.activity_subscriber);
+    let activity_subscription = RoomSubscription::new(
+        room_model.id.clone(),
+        activity_subscriber,
+        state.event_bus.clone(),
+    );
+    // Start background task - we don't need to track the JoinHandle
+    drop(activity_subscription.start().await);
+
     // Map host UUID to display name for response
     let host_uuid = room_model.host_uuid.clone().unwrap_or_default();
     let host_name = state
