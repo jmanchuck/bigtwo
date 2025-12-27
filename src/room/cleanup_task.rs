@@ -128,7 +128,7 @@ async fn delete_room(
 mod tests {
     use super::*;
     use crate::room::{models::RoomModel, repository::InMemoryRoomRepository};
-    use crate::user::{mapping_service::InMemoryPlayerMappingService, PlayerMappingService};
+    use crate::user::mapping_service::InMemoryPlayerMappingService;
 
     #[tokio::test]
     async fn test_cleanup_removes_inactive_rooms() {
