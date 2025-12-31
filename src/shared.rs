@@ -502,6 +502,10 @@ pub mod test_utils {
         async fn send_to_player(&self, _username: &str, _message: &str) {}
 
         async fn send_to_players(&self, _usernames: &[String], _message: &str) {}
+
+        async fn count_online_players(&self) -> usize {
+            0
+        }
     }
 
     /// Test-specific builder that extends the main AppStateBuilder with test defaults

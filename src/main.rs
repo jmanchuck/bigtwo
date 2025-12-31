@@ -160,6 +160,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/health", get(|| async { "OK" }))
+        .route("/online", get(session::get_online_count))
         .route("/session", post(session::create_session))
         .route(
             "/session/validate",
