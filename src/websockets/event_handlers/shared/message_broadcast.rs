@@ -58,6 +58,9 @@ mod tests {
                 self.send_to_player(u, message).await;
             }
         }
+        async fn count_online_players(&self) -> usize {
+            0
+        }
     }
 
     use tokio::sync::mpsc;

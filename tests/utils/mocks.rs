@@ -106,4 +106,8 @@ impl ConnectionManager for MockConnectionManager {
             self.send_to_player(uuid, message).await;
         }
     }
+
+    async fn count_online_players(&self) -> usize {
+        self.connected_players.read().await.len()
+    }
 }

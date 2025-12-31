@@ -39,6 +39,16 @@ pub async fn validate_session(
     })))
 }
 
+/// Returns the total number of players currently online
+#[instrument(skip(state))]
+pub async fn get_online_count(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
+    let count = state.connection_manager.count_online_players().await;
+
+    Ok(Json(json!({
+        "online_players": count
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

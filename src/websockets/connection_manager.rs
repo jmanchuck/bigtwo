@@ -17,6 +17,8 @@ pub trait ConnectionManager: Send + Sync {
 
     #[allow(dead_code)] // Trait method for batch messaging
     async fn send_to_players(&self, uuids: &[String], message: &str);
+
+    async fn count_online_players(&self) -> usize;
 }
 
 pub struct InMemoryConnectionManager {
@@ -72,6 +74,11 @@ impl ConnectionManager for InMemoryConnectionManager {
                 let _ = sender.send(message.to_string());
             }
         }
+    }
+
+    async fn count_online_players(&self) -> usize {
+        let connections = self.connections.read().await;
+        connections.len()
     }
 }
 
