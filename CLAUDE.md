@@ -56,11 +56,13 @@ src/
 │   ├── events.rs            # RoomEvent definitions
 │   ├── room_handler.rs      # Event handler trait
 │   └── room_subscription.rs # Room-specific event subscriptions
-├── session/                  # JWT-based session management (7-day expiry)
+├── session/                  # JWT-based session management (365-day expiry, configurable)
 │   ├── handlers.rs          # REST endpoints: create, validate
 │   ├── middleware.rs        # JWT authentication middleware
 │   ├── repository.rs        # In-memory + PostgreSQL implementations
 │   ├── service.rs           # Business logic
+│   ├── creator.rs           # Session creation orchestrator with transaction-like semantics
+│   ├── generators.rs        # Username generator trait and implementations
 │   ├── token.rs             # JWT utilities
 │   └── models.rs, types.rs  # Data structures
 ├── room/                     # Game room lifecycle management
@@ -91,13 +93,15 @@ src/
 ├── bot/                      # AI bot system
 │   ├── manager.rs           # Bot lifecycle management
 │   ├── basic_strategy.rs    # Basic bot playing strategy
+│   ├── strategy_factory.rs  # Factory for creating strategies by difficulty level
 │   ├── bot_room_subscriber.rs # Bot event handling
 │   ├── handlers.rs          # REST endpoints for bot operations
-│   └── types.rs             # Bot-related types
+│   └── types.rs             # Bot-related types (BotDifficulty, BotStrategy trait)
 ├── stats/                    # Game statistics tracking system
 │   ├── models.rs            # Data structures (GameResult, RoomStats, PlayerStats)
 │   ├── service.rs           # Stats service and room subscriber
 │   ├── repository.rs        # Stats storage (in-memory with per-room locking)
+│   ├── errors.rs            # Stats-specific error types (StatsError)
 │   ├── collectors/          # Data collectors (cards remaining, win/loss)
 │   └── calculators/         # Score calculators (card count, 10+ multiplier)
 └── user/                     # User management
@@ -108,6 +112,9 @@ src/
 
 ### AppState (shared.rs)
 Central dependency injection container holding all repositories, services, managers, and the event bus. Contains builder pattern for testing.
+
+### SessionCreator (session/creator.rs)
+Orchestrates the complex session creation process with transaction-like semantics. Coordinates username generation, session storage, player mapping, and JWT token creation. Supports configurable session expiration (default 365 days, configurable via SESSION_EXPIRATION_DAYS env var).
 
 ### EventBus (event/)
 Central message broker enabling decoupled communication. Supports both global and room-specific event subscriptions. Key event types include game moves, player connections/disconnections, and room lifecycle events.
@@ -161,6 +168,7 @@ Tracks game statistics per room. Uses collector pattern for data gathering and c
 ```
 tests/
 ├── websocket_workflow_tests.rs  # Full game scenario integration tests
+├── stats_room_subscriber_tests.rs # Stats subscriber event handling tests
 └── utils/                       # Test utilities and helpers
     ├── setup.rs                 # AppState and test environment setup
     ├── mocks.rs                 # Mock repositories and managers
@@ -212,7 +220,10 @@ This separation allows game logic to be independent of WebSocket implementation 
 
 The backend includes AI bots for testing and single-player gameplay:
 - **Bot creation**: Add bots via REST endpoint `POST /room/{id}/bot/add`
-- **Bot strategy**: Basic strategy that plays valid moves automatically
+- **Bot strategies**: Multiple difficulty levels (Easy, Medium, Hard) supported via BotStrategyFactory
+  - Currently all levels use BasicBotStrategy
+  - Future: Medium and Hard strategies can be implemented and plugged in via factory
+- **Strategy pattern**: BotStrategy trait allows easy addition of new bot behaviors
 - **Event-driven**: Bots respond to `TurnChange` events with automatic moves
 - **Integration**: Bots appear as regular players to other clients
 
