@@ -1,239 +1,205 @@
-# Rust Migration Plan: Big Two Game Backend
+# Big Two - Multiplayer Card Game
 
-## 📋 Current System Overview
+A real-time multiplayer implementation of Big Two (大老二), a popular Chinese card game. Built with Rust backend and TypeScript React frontend, featuring AI bots, game statistics, and event-driven architecture.
 
-The Python/FastAPI backend is a real-time multiplayer Big Two card game with the following components:
+**Play now: [https://big2.app](https://big2.app)**
 
-### Core Features
-- **REST API** for room and session management
-- **WebSocket connections** for real-time gameplay
-- **Session management** with automatic cleanup
-- **Room management** with host controls
-- **Game state management** for Big Two card game
-- **Card game logic** and move validation
+## Features
 
-### Pain Points Driving Migration
-- **Limited Type Safety**: Python's dynamic typing makes refactoring risky
-- **Testing Complexity**: Without comprehensive types, AI agents struggle to make safe changes
-- **Runtime Errors**: Type-related issues only surface at runtime
-- **Performance**: Python's GIL and interpretation overhead
+- **Real-time Multiplayer**: WebSocket-based gameplay supporting up to 4 players
+- **AI Bot System**: Configurable bot players with multiple difficulty levels
+- **Game Statistics**: Automatic tracking of wins, losses, scores, and streaks
+- **Session Management**: JWT-based authentication with configurable expiration (default 365 days)
+- **Event-Driven Architecture**: Decoupled components using EventBus pattern
+- **Flexible Storage**: PostgreSQL for persistence or in-memory for fast development
+- **Complete Big Two Rules**: Full implementation of card rankings, hand validation, and game flow
 
-## 🔌 REST API Endpoints
+## Tech Stack
 
-### Session Management
+### Backend (Rust)
+- **axum** - Web framework
+- **tokio** - Async runtime
+- **sqlx** - Database driver (PostgreSQL)
+- **tower** - Middleware
+- **serde** - Serialization
+- **jsonwebtoken** - JWT authentication
 
-Users are not expected to have an account and can join any lobby. Doing so will assign them a session id in which if they disconnected, they'd be able to reconnect. This session id will persist for 7 days and extend each time they connect again.
+### Frontend (TypeScript + React)
+- **React 18** with TypeScript
+- **Vite** - Build tool
+- **Tailwind CSS** + **shadcn/ui** - Styling and components
+- **WebSocket** - Real-time communication
 
-| Endpoint | Method | Request | Response | Description |
-|----------|--------|---------|----------|-------------|
-| `/session/` | POST | None | `SessionResponse` | Create new session with auto-generated username |
+## Quick Start
 
-### Room Management  
-Creator of a room is also the host. If the host leaves the room then the next user is assigned as host. The host has the ability to "delete" the room.
+### Prerequisites
+- Rust 1.70+ and Cargo
+- Node.js 18+ and npm
+- PostgreSQL (optional, can use in-memory storage)
 
-| Endpoint | Method | Request | Response | Description |
-|----------|--------|---------|----------|-------------|
-| `/room/` | POST | `RoomCreateRequest` | `RoomResponse` | Create room with random ID |
-| `/rooms/` | GET | None | `List[RoomResponse]` | Get all available rooms |
-| `/rooms/{room_id}` | DELETE | Query: `host_name` | `RoomDeleteResponse` | Delete room (host only) |
+### Backend Setup
 
-### Utility Endpoints
-| Endpoint | Method | Request | Response | Description |
-|----------|--------|---------|----------|-------------|
-| `/` | GET | None | `MessageResponse` | Health check / welcome message |
+```bash
+cd bigtwo
 
-### WebSocket Endpoint
-| Endpoint | Protocol | Description |
-|----------|----------|-------------|
-| `/ws/{room_id}` | WebSocket | Real-time game communication |
+# Development with in-memory storage (fastest, no DB required)
+./scripts/dev.sh --memory
 
-## 📡 WebSocket Communication Protocol
+# Development with PostgreSQL (persistent sessions)
+export DATABASE_URL="postgres://user:pass@localhost/bigtwo"
+./scripts/dev.sh --postgres
 
-### Connection Flow
-1. Client connects to `/ws/{room_id}` with optional query parameters
-2. Server processes authentication via session validation
-3. Server validates room exists and player can join
-4. Connection established with initial messages sent to client
+# Run tests
+cargo test                    # Unit tests
+cargo test -- --ignored      # Integration tests (requires DB)
 
-### Message Structure
-All messages follow this JSON structure:
-```json
-{
-  "type": "MESSAGE_TYPE",
-  "payload": { /* message-specific data */ },
-  "meta": {
-    "timestamp": "2023-12-01T12:00:00Z",
-    "player_id": "optional_player_id"
-  }
-}
+# Code quality checks
+cargo clippy                  # Lint
+cargo fmt                     # Format
 ```
 
-### Message Types
+### Frontend Setup
 
-#### Client → Server Messages
-| Type | Payload Fields | Description |
-|------|----------------|-------------|
-| `CHAT` | `content: string` | Send chat message |
-| `MOVE` | `cards: string[]` | Play cards |
-| `LEAVE` | None | Leave the room |
-| `START_GAME` | None | Start game (host only) |
+```bash
+cd bigtwo-ui
 
-#### Server → Client Messages
-| Type | Payload Fields | Description |
-|------|----------------|-------------|
-| `PLAYERS_LIST` | `players: string[]` | Current players in room, sent to all users in the room when a new player joins |
-| `HOST_CHANGE` | `host: string` | New host assigned whenever the host leaves. Name of the new host |
-| `MOVE_PLAYED` | `player: string, cards: string[]` | Player played cards |
-| `TURN_CHANGE` | `player: string` | Turn changed to player |
-| `ERROR` | `message: string` | Error occurred |
-| `GAME_STARTED` | `current_turn: string, cards: Card[]` | Message sent to a player when game host starts the game |
+npm install
+npm run dev                   # Development server
+npm run build                 # Production build
+```
 
-## 🗄️ Data Storage
+## Architecture
 
-### Database Tables (PostgreSQL)
+### Event-Driven Design
+The backend uses an EventBus for decoupled communication between components:
+- **GameRoomSubscriber**: Handles game logic and rule enforcement
+- **WebSocketRoomSubscriber**: Broadcasts events to connected clients
+- **BotRoomSubscriber**: Manages AI bot responses
+- **StatsRoomSubscriber**: Tracks game statistics
 
-#### `rooms`
-- `id` (String, Primary Key) - Random pet name generated ID
-- `host_name` (String, Not Null) - Username of room host
-- `status` (String) - "ONLINE" or "OFFLINE" 
-- `player_count` (Integer) - Number of connected players
+### Repository Pattern
+Abstractions for data storage enable easy switching between storage backends:
+- **SessionRepository**: User sessions (in-memory or PostgreSQL)
+- **RoomRepository**: Game rooms (in-memory)
+- **StatsRepository**: Game statistics (in-memory with per-room locking)
 
-#### `user_sessions` 
-- `id` (String, Primary Key) - UUID v4
-- `username` (String, Not Null) - Auto-generated pet name
-- `created_at` (DateTime) - Session creation time
-- `expires_at` (DateTime) - Session expiration time
+### Directory Structure
+```
+src/
+├── main.rs              # Server setup and dependency injection
+├── event/               # EventBus and event definitions
+├── session/             # JWT authentication and session management
+├── room/                # Game room lifecycle management
+├── game/                # Big Two game logic and card system
+├── websockets/          # WebSocket handling and message routing
+├── bot/                 # AI bot system with strategy pattern
+├── stats/               # Game statistics tracking
+└── user/                # Player mapping service
+```
 
-#### `users` (Currently unused)
-- `id` (Integer, Primary Key)
-- `username` (String, Unique)
-- `password_hash` (String)
-- `wins` (Integer)
-- `losses` (Integer)
+## API Documentation
 
-### In-Memory Storage
+### REST Endpoints
 
-#### Game State Repository
-- **Storage**: In-memory dictionary `Dict[room_id, GameStateModel]`
-- **Interface**: `GameStateRepository` with methods:
-  - `get_game(room_id)` → Optional game state
-  - `set_game(room_id, game)` → Store game state
-  - `delete_game(room_id)` → Remove game state
-  - `has_game(room_id)` → Check if game exists
+**Session Management**
+- `POST /session` - Create new session with auto-generated username
+- `GET /session/validate` - Validate session (requires X-Session-ID header)
 
-#### WebSocket Connection Manager
-- **Storage**: In-memory nested dictionary `Dict[room_id, Dict[player_name, WebSocket]]`
-- **Features**:
-  - Track active WebSocket connections per room
-  - Room-level locks for thread safety
-  - Broadcast to all players in room
-  - Send personal messages to specific players
+**Room Management**
+- `POST /room` - Create room (returns pet-name ID)
+- `GET /rooms` - List all rooms
+- `GET /room/{id}` - Get room details
+- `GET /room/{id}/stats` - Get current room statistics
+- `POST /room/{id}/join` - Join room (authenticated)
+- `DELETE /room/{id}` - Delete room (host only)
 
-## 🎮 Game State Management
+**Bot Management**
+- `POST /room/{id}/bot/add` - Add AI bot to room
+- `DELETE /room/{id}/bot/{bot_uuid}` - Remove bot from room
 
-### Game State Model
-- `room_id`: String identifier
-- `players`: List of players with hands
-- `turn_index`: Current player's turn (0-3)
-- `current_play`: Last played cards
-- `played_hands`: History of all played hands
+### WebSocket Protocol
 
-### Player Model
-- `name`: Player username
-- `hand`: List of cards in player's hand
+**Connection**
+- Endpoint: `GET /ws/{room_id}`
+- Authentication: JWT token via `Sec-WebSocket-Protocol` header
 
-### Game Operations
-- **Add Player**: Add to game if under 4 players
-- **Remove Player**: Remove and adjust turn index
-- **Deal Cards**: Shuffle deck and deal 13 cards to each of 4 players
-- **Play Cards**: Validate and remove cards from player's hand
-- **Next Turn**: Advance to next player
+**Client → Server Messages**
+- `CHAT` - Send chat message
+- `MOVE` - Play cards
+- `LEAVE` - Leave room
+- `START_GAME` - Start game (host only)
+- `READY` - Mark ready for game
 
-## 🃏 Card System
+**Server → Client Messages**
+- `PLAYERS_LIST` - Current players in room
+- `MOVE_PLAYED` - Player made a move
+- `TURN_CHANGE` - Turn advanced to next player
+- `GAME_STARTED` - Game has begun
+- `GAME_WON` - Player won the game
+- `GAME_RESET` - Game state reset
+- `BOT_ADDED` / `BOT_REMOVED` - Bot status change
+- `STATS_UPDATED` - Statistics updated
+- `ERROR` - Error occurred
+- `HOST_CHANGE` - New host assigned
 
-### Card Representation
-- **Suits**: Diamonds (1), Clubs (2), Hearts (3), Spades (4)
-- **Ranks**: 3-10, J, Q, K, A, 2 (2 is highest in Big Two)
-- **String Format**: "3D", "KH", "AS", etc.
-- **Display Format**: "3♦", "K♥", "A♠", etc.
+## Game Rules
 
-### Card Operations
-- Parse string to Card object
-- Convert Card to string representation
-- Card comparison for game rules
-- Deck creation (52 cards)
-- Hand validation logic
+Big Two is a climbing card game where players try to be first to empty their hand.
 
-## 🔧 Session Management
+**Card Rankings**
+- Suits: Diamonds < Clubs < Hearts < Spades
+- Ranks: 3 < 4 < 5 < 6 < 7 < 8 < 9 < 10 < J < Q < K < A < 2 (2 is highest)
 
-### Session Lifecycle
-1. **Creation**: Auto-generates UUID and random username
-2. **Validation**: Check session exists and hasn't expired
-3. **Expiration**: 24-hour default lifespan
-4. **Cleanup**: Background task removes expired sessions every 12 hours
+**Valid Hands**
+- Single card
+- Pair (two cards of same rank)
+- Triple (three cards of same rank)
+- Straight (five consecutive ranks)
+- Flush (five cards of same suit)
+- Full House (triple + pair)
+- Four of a Kind (four cards of same rank)
+- Straight Flush (five consecutive cards of same suit)
 
-### Session Features
-- **Automatic Username Generation**: Uses petname library for readable names
-- **Header-based Authentication**: `X-Session-ID` header for API calls
-- **Query Parameter Auth**: Session ID in WebSocket connection URL
-- **Background Cleanup**: Periodic removal of expired sessions
+**Special Rules**
+- First move must include 3♦
+- Players must play higher than previous hand or pass
+- When all players pass, last player starts new round with any hand
 
-## 🏠 Room Management
+## Development
 
-### Room Lifecycle
-1. **Creation**: Host creates room with auto-generated ID (petname)
-2. **Joining**: Players connect via WebSocket to `/ws/{room_id}`
-3. **Host Transfer**: If host leaves, ownership transfers to next player
-4. **Deletion**: Host can delete room, or auto-deleted when empty
+### Running Tests
+```bash
+# Backend
+cargo test                           # Unit tests
+cargo test -- --ignored              # Integration tests
+cargo test test_name -- --nocapture  # Single test with output
 
-### Room Features
-- **Random IDs**: Human-readable pet names (e.g., "happycat")
-- **Player Tracking**: Real-time count in database
-- **Host Controls**: Only host can start game or delete room
-- **Status Tracking**: ONLINE/OFFLINE based on player connections
+# Frontend
+npm test
+```
 
-## 🔄 Connection Handling
+### Code Quality
+Before committing, ensure:
+1. `cargo test` - All tests pass
+2. `cargo clippy` - No warnings (CI enforces `-D warnings`)
+3. `cargo fmt` - Code is formatted
 
-### WebSocket Lifecycle
-1. **Accept Connection**: Server accepts WebSocket connection
-2. **Authentication**: Validate session from query parameters
-3. **Room Validation**: Check room exists and player can join
-4. **Message Loop**: Process incoming messages until disconnection
-5. **Cleanup**: Remove from connection manager, update player count
+### Manual Testing
+```bash
+./scripts/test-session.sh     # Test REST endpoints
+```
 
-### Reconnection Support
-- Players can reconnect with same session ID
-- Server sends current game state on reconnection
-- Host status restored if reconnecting host
+## Configuration
 
-## 🏗️ Technology Migration
+**Environment Variables**
+- `DATABASE_URL` - PostgreSQL connection string (optional)
+- `SESSION_EXPIRATION_DAYS` - Session lifetime in days (default: 365)
+- `PORT` - Server port (default: 3000)
 
-### Key Rust Advantages
-- **Compile-time Type Checking**: Eliminate runtime type errors
-- **Memory Safety**: No garbage collection overhead
-- **Concurrency**: Fearless parallel processing with tokio
-- **Performance**: 5-10x improvement expected in WebSocket throughput
-- **Tooling**: Superior development experience for refactoring
+## License
 
-### Compatibility Requirements
-- **Same REST API**: All endpoints must have identical behavior
-- **Same WebSocket Protocol**: Message format must remain unchanged
-- **Database Schema**: Keep existing PostgreSQL tables
-- **Session Format**: Maintain UUID-based sessions with same expiration
+MIT
 
-## 🎯 Migration Priorities
+## Credits
 
-### Critical Features to Replicate
-1. **Session Management**: UUID generation, expiration, cleanup
-2. **Room Operations**: Creation, listing, deletion with host validation
-3. **WebSocket Handling**: Connection management, message routing
-4. **Game State**: In-memory storage with same data model
-5. **Card System**: Exact same card representation and validation
-6. **Error Handling**: Compatible error responses for frontend
-
-### Non-Essential Features
-- User table (currently unused)
-- HTTPS certificate generation
-- Complex deployment configurations
-
-This migration will provide a more robust, performant, and maintainable backend while maintaining 100% compatibility with the existing TypeScript frontend. 
+Built with Rust, axum, React, and TypeScript.
